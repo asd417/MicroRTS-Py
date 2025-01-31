@@ -6,7 +6,7 @@ import warnings
 import xml.etree.ElementTree as ET
 from itertools import cycle
 
-import gym
+import gymnasium as gym
 import jpype
 import jpype.imports
 import numpy as np
@@ -31,7 +31,8 @@ as an example.
 
 
 class MicroRTSGridModeVecEnv:
-    metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 150}
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 150}
+    render_mode = "rgb_array"
     """
     [[0]x_coordinate*y_coordinate(x*y), [1]a_t(6), [2]p_move(4), [3]p_harvest(4), 
     [4]p_return(4), [5]p_produce_direction(4), [6]p_produce_unit_type(z), 
@@ -292,8 +293,8 @@ class MicroRTSGridModeVecEnv:
 
 
 class MicroRTSBotVecEnv(MicroRTSGridModeVecEnv):
-    metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 150}
-
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 150}
+    render_mode = "rgb_array"
     def __init__(
         self,
         ai1s=[],

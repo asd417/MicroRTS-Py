@@ -12,8 +12,8 @@ exclude = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.7.1,<3.10"
-gym = "0.23.1"
+python = ">=3.10,<3.13"
+gymnasium = {extras = ["other"], version = "^1.0.0"}
 JPype1 = "^1.3.0"
 peewee = "^3.14.8"
 spyder = {version = "^5.1.5", optional = true}
@@ -24,8 +24,8 @@ poetry-dynamic-versioning = "^0.13.0"
 tensorboard = "^2.5.0"
 wandb = "^0.12.1"
 trueskill = "^0.4.5"
-stable-baselines3 = "^1.1.0"
-torch = "1.7.1"
+stable-baselines3 = "^2.1.0"
+torch = "^2.6.0"
 pytest = "^6.2.5"
 pre-commit = "^2.17.0"
 

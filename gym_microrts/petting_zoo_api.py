@@ -1,7 +1,7 @@
 from copy import deepcopy
 
 import numpy as np
-from gym import spaces
+from gymnasium import spaces
 from pettingzoo import AECEnv
 from pettingzoo.utils import agent_selector
 
@@ -10,8 +10,8 @@ from gym_microrts.envs.vec_env import MicroRTSGridModeSharedMemVecEnv
 
 class PettingZooMicroRTSGridModeSharedMemVecEnv(AECEnv, MicroRTSGridModeSharedMemVecEnv):
 
-    metadata = {"render.modes": ["human"], "name": "micrortsEnv-v0"}
-
+    metadata = {"render_modes": ["human"], "name": "micrortsEnv-v0"}
+    render_mode = "rgb_array"
     def __init__(
         self,
         num_selfplay_envs,
