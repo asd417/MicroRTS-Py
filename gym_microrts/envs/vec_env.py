@@ -32,7 +32,7 @@ as an example.
 
 class MicroRTSGridModeVecEnv:
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 150}
-    render_mode = "rgb_array"
+    #render_mode = "rgb_array"
     """
     [[0]x_coordinate*y_coordinate(x*y), [1]a_t(6), [2]p_move(4), [3]p_harvest(4), 
     [4]p_return(4), [5]p_produce_direction(4), [6]p_produce_unit_type(z), 
@@ -191,7 +191,6 @@ class MicroRTSGridModeVecEnv:
     def reset(self):
         responses = self.vec_client.reset([0] * self.num_envs)
         obs = [self._encode_obs(np.array(ro)) for ro in responses.observation]
-
         return np.array(obs)
 
     def _encode_obs(self, obs):

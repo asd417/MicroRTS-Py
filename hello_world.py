@@ -41,6 +41,7 @@ nvec = envs.action_space.nvec
 for i in range(10000):
     envs.render()
     action_mask = envs.get_action_mask()
+    print(f"Action Mask Shape: {action_mask.shape}")
     action_mask = action_mask.reshape(-1, action_mask.shape[-1])
     action_mask[action_mask == 0] = -9e8
     # sample valid actions
@@ -57,6 +58,7 @@ for i in range(10000):
         ),
         axis=1,
     )
+    print(f"Action Shape: {action.shape}")
     # doing the following could result in invalid actions
     # action = np.array([envs.action_space.sample()])
     next_obs, reward, done, info = envs.step(action)
