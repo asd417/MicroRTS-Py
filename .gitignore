@@ -137,3 +137,4 @@ dmypy.json
 
 # PyCharm
 .idea/
+gym_microrts/microrts
