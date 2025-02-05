@@ -86,6 +86,7 @@ class MicroRTSGridModeVecEnv:
             print(MICRORTS_CLONE_MESSAGE)
             os.system(f"git submodule update --init --recursive")
 
+        
 
         if autobuild:
             print(f"removing {self.microrts_path}/microrts.jar...")
@@ -108,22 +109,25 @@ class MicroRTSGridModeVecEnv:
 
         # launch the JVM
         if not jpype._jpype.isStarted():
+            
             registerDomain("ts", alias="tests")
             registerDomain("ai")
             jars = [
                 "microrts.jar",
                 "lib/bots/Coac.jar",
-                "lib/bots/Droplet.jar",
-                "lib/bots/GRojoA3N.jar",
-                "lib/bots/Izanagi.jar",
-                "lib/bots/MixedBot.jar",
-                "lib/bots/TiamatBot.jar",
-                "lib/bots/UMSBot.jar",
-                "lib/bots/mayariBot.jar",  # "MindSeal.jar"
+                #"lib/bots/Droplet.jar",
+                #"lib/bots/GRojoA3N.jar",
+                #"lib/bots/Izanagi.jar",
+                #"lib/bots/MixedBot.jar",
+                #"lib/bots/TiamatBot.jar",
+                #"lib/bots/UMSBot.jar",
+                #"lib/bots/mayariBot.jar",  # "MindSeal.jar" 
+                # windows has path length limit. 
             ]
             for jar in jars:
                 jpype.addClassPath(os.path.join(self.microrts_path, jar))
             jpype.startJVM(*jvm_args, convertStrings=False)
+            jpype.java.lang.System.setProperty("org.jpype.debug", "true")
 
         # start microrts client
         from rts.units import UnitTypeTable

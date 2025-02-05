@@ -6,9 +6,15 @@ Remove-Item -Recurse -Force -ErrorAction SilentlyContinue build, microrts.jar
 # Create build directory
 New-Item -ItemType Directory -Path build
 
-# Compile Java source files
+# Collect all Java source files
 $javaFiles = Get-ChildItem -Path ./src -Recurse -Filter *.java | ForEach-Object { $_.FullName }
-javac -d "./build" -cp "./lib/*" -sourcepath "./src" $javaFiles
+
+# Write all file paths to an argument file
+$argFile = "sources.txt"
+$javaFiles | Set-Content -Path $argFile
+
+# Compile Java files using the argument file
+javac -d "./build" -cp "./lib/*" -sourcepath "./src" "@$argFile"
 
 # Copy libraries to build directory
 Copy-Item -Path lib\* -Destination build -Recurse
@@ -22,10 +28,11 @@ Set-Location -Path build
 
 Get-ChildItem -Filter *.jar | ForEach-Object {
     Write-Output "adding dependency $($_.Name)"
-    jar xf $_.FullName
+    & "$env:JAVA_HOME\bin\jar.exe" xf $_.FullName
 }
 
-jar cvf microrts.jar *
+#jar cvf microrts.jar *
+& "$env:JAVA_HOME\bin\jar.exe" cvf microrts.jar *
 Move-Item -Path microrts.jar -Destination "../microrts.jar"
 
 # Clean up build directory
