@@ -1,5 +1,6 @@
 import json
 import os
+import platform
 import subprocess
 import sys
 import warnings
@@ -85,6 +86,7 @@ class MicroRTSGridModeVecEnv:
             print(MICRORTS_CLONE_MESSAGE)
             os.system(f"git submodule update --init --recursive")
 
+
         if autobuild:
             print(f"removing {self.microrts_path}/microrts.jar...")
             if os.path.exists(f"{self.microrts_path}/microrts.jar"):
@@ -92,7 +94,13 @@ class MicroRTSGridModeVecEnv:
             print(f"building {self.microrts_path}/microrts.jar...")
             root_dir = os.path.dirname(gym_microrts.__path__[0])
             print(root_dir)
-            subprocess.run(["bash", "build.sh", "&>", "build.log"], cwd=f"{root_dir}")
+                
+            if platform.system() == 'Windows':
+                print("Running on Windows Environment")
+                subprocess.run(["powershell", "-Command", "./build.ps1 *> build.log"], cwd=f"{root_dir}")
+            else:
+                print("Running on Non-Windows Environment")
+                subprocess.run(["bash", "build.sh", "&>", "build.log"], cwd=f"{root_dir}")
 
         # read map
         root = ET.parse(os.path.join(self.microrts_path, self.map_paths[0])).getroot()
