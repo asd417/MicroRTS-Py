@@ -1,5 +1,6 @@
-# Example code of SSVD trying to learn an arbitrary function
 # Dependencies required are
+import os
+import math
 import tqdm
 import torch # with cuda
 import torch.jit
@@ -14,13 +15,16 @@ from stable_baselines3.common.vec_env import VecVideoRecorder
 from gym_microrts import microrts_ai
 from gym_microrts.envs.vec_env import MicroRTSGridModeVecEnv, MicroRTSGridModeSharedMemVecEnv
 
+#TODO: Write abstractions like broodwar
+#See Unitaction.java :: fromVectorAction() to see how this output space makes sense
+
 def create_population(shape, size, device):
     p = []
     for i in range(size):
         p.append(torch.randn(shape, device=device))
     return p
 
-def roulette_wheel_selection(population, device='cpu'):
+def roulette_wheel_selection(population, device="cpu"):
     """
     Perform roulette wheel selection on a population.
     
@@ -46,7 +50,6 @@ def roulette_wheel_selection(population, device='cpu'):
 
     # Perform roulette wheel selection
     selected_indices = torch.multinomial(probabilities, 2, replacement=False).tolist()
-    
     return population[selected_indices[0]][0], population[selected_indices[1]][0]  # Return selected chromosome
 
 def crossover(parent1, parent2):
@@ -173,10 +176,25 @@ def start_game(envs, weights1, weightsO, seed, device="cpu", maxstep=10000):
         action_mask = envs.get_action_mask()
         #print(f"Action Mask Shape: {action_mask.shape}")
         action_mask = action_mask.reshape(-1, action_mask.shape[-1])
-        print(obs)
-        inputTensor = torch.from_numpy(obs.reshape(envs.height, -1)).to(device)
+        input_tensor_raw = np.array(obs)
+        conv3d = torch.nn.Conv3d(in_channels=1, out_channels=1, kernel_size=(4, 3, 3), stride=1, padding=0, bias=False)
+
+        inputTensor = torch.from_numpy(input_tensor_raw).to(device).float()
+        m = torch.nn.Conv3d(1, 1, (1, 1, 4), stride=(1, 1, 2), padding=(0, 0, 2))
+        it : torch.Tensor = m(inputTensor)
+        #print(input.shape)
+        #print(output.shape)
+        it = m(it)
+        #print(output.shape)
+        it = m(it)
+        #print(output.shape)
+        it = m(it)
+        m = torch.nn.Conv3d(1, 1, (1, 1, 3), stride=(1, 1, 2), padding=(0, 0, 0))
+        it = m(it)
+        it = it.squeeze()
+
         #print(inputTensor)
-        outputTensor = evaluateSSVD(weights1,weightsO,inputTensor)
+        outputTensor = evaluateSSVD(weights1,weightsO,it)
         del inputTensor
         outputTensor = outputTensor.reshape(-1, action_mask.shape[-1])
         outputTensor[action_mask == 0] = -9e8 # mask action with action mask
@@ -213,9 +231,64 @@ def fitness(envs, chromosome, ssvd, device, trials=1):
     del weightsO
     return sum(fits)
 
-if __name__ == "__main__":
-    RECORD = False
-    RENDER = True
+def load_files(pt_file, txt_file):
+    # Check if the .pt file exists
+    if os.path.exists(pt_file):
+        tensor_data = torch.load(pt_file)
+        print(f"Loaded tensor data from {pt_file}")
+    else:
+        tensor_data = None
+        print(f"{pt_file} does not exist.")
+    
+    # Check if the .txt file exists
+    if os.path.exists(txt_file):
+        with open(txt_file, 'r') as file:
+            text_data = file.read()
+        print(f"Loaded text data from {txt_file}")
+    else:
+        text_data = None
+        print(f"{txt_file} does not exist.")
+    
+    return tensor_data, text_data
+
+def write_log(log_message, log_file='population_log.txt'):
+    # Open the log file in append mode ('a'), so new logs are added to the end
+    with open(log_file, 'a') as file:
+        file.write(log_message + '\n')
+    #print(f"Log written to {log_file}")
+
+# input is (1, 16, 16, 29)
+def dout(din,kernel_size, padding=0,dilation=1, stride=1):
+    return math.floor((din + 2*padding - dilation * (kernel_size - 1) - 1) / stride + 1)
+
+def test_conv():
+    # m = torch.nn.Conv3d(1, 1, 3, stride=2)
+    # non-square kernels and unequal stride and with padding
+    m = torch.nn.Conv3d(1, 1, (1, 1, 4), stride=(1, 1, 2), padding=(0, 0, 2))
+    
+    input = torch.randn(1, 1, 16, 16, 29)
+    output : torch.Tensor = m(input)
+    
+    print(input.shape)
+    print(output.shape)
+    output = m(output)
+    print(output.shape)
+    output = m(output)
+    print(output.shape)
+    output = m(output)
+    m = torch.nn.Conv3d(1, 1, (1, 1, 3), stride=(1, 1, 2), padding=(0, 0, 0))
+    print(output.shape)
+    output = m(output)
+    print(output.shape)
+
+    output = output.squeeze(-1)
+    print(output.shape)
+
+    #print(dout(29, 5, stride=3, padding=2))
+    return
+
+
+def run_test():
     envs = MicroRTSGridModeVecEnv(
         num_selfplay_envs=0,
         num_bot_envs=1,
@@ -231,31 +304,41 @@ if __name__ == "__main__":
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     population = 20
     input_h = envs.height
-    input_w = envs.width * sum(envs.num_planes)
+    input_w = envs.width
     actionSpace = sum(envs.action_space.nvec)
     print(f"Observation Space Height: {input_h}")
     print(f"Observation Space Width: {input_w}")
     print(f"Action Space size: {actionSpace}")
 
     ssvd = SSVD(input_w, input_h, actionSpace)
-    p = create_population((ssvd.get_chromosome_size(),1), population, device)
+    p, logfile = load_files("population.pt", "population_log.txt")
+    if p is None:
+        p = create_population((ssvd.get_chromosome_size(),1), population, device)
+        with open("population_log.txt", 'w') as file:
+            file.write("Starting new training loop" + '\n')
+
     mutation_rate = 0.5
     win = False
     gi = 1
+    if not logfile is None:
+        with open("population_log.txt", 'r') as file:
+            lines = file.readlines()
+            last_line = lines[-1].strip().split()
+            if last_line[0] == "Generation":
+                gi = last_line[1]
+                print(f"Continuing from Generation {gi}")
+
     maxgen = 1000
-    
     best_chromosome = None
     best_fitness = 0
     while win == False:
         if(maxgen < gi):
             win = True
             break
-        #print(f"Generation{gi}")
         ev_f = []
         progress = tqdm.tqdm(total=len(p), desc=f"Generation {gi}/{maxgen}")
-        
         for chromosome in p:
-            f = fitness(envs, chromosome, ssvd, device)
+            f = fitness(envs, chromosome, ssvd, device) + 10
             tqdm.tqdm.write(f"Fitness: {f}")
             if f > best_fitness:
                 best_fitness = f
@@ -265,7 +348,9 @@ if __name__ == "__main__":
             ev_f.append(f)
             progress.update(1)
         avg = sum(ev_f) / len(ev_f)
-        tqdm.tqdm.write(f"Generation {gi} Average: {avg} StDev: {statistics.stdev(ev_f)}")
+        logstr = f"Generation {gi} Average: {avg} StDev: {statistics.stdev(ev_f)}"
+        tqdm.tqdm.write(logstr)
+        write_log(logstr)
         if(not win):
             ev_p = list(zip(p,ev_f))
             ev_p_sorted = sorted(ev_p, key=lambda x: x[1], reverse=True) # sort by fitness from highest to lowest
@@ -273,11 +358,29 @@ if __name__ == "__main__":
             ev_p_sorted = ev_p_sorted[:elitism]
             new_p = []
             for i in range(population - elitism): # GA
-                parent1, parent2 = roulette_wheel_selection(ev_p)
-                new_p.append(mutate_multivariate_gaussian(crossover(parent1, parent2), mutation_rate))
+                print("Roulette Selection...")
+                parent1, parent2 = roulette_wheel_selection(ev_p, device)
+                print("Crossover...")
+                co = crossover(parent1, parent2)
+                print("Mutating...")
+                mutate = mutate_multivariate_gaussian(co, mutation_rate)
+                print("Done Individual Creation")
+                new_p.append(mutate)
+                
             p = [tup[0] for tup in ev_p_sorted] + new_p
             gi += 1
         else:
-            tqdm.tqdm.write(f"Training Done | Best Fitness: {best_fitness}")
-            tqdm.tqdm.write(f"Chromosome: {chromosome}")
+            logstr = f"Training Done | Best Fitness: {best_fitness}"
+            tqdm.tqdm.write(logstr)
+            write_log(logstr)
+            logstr = f"Chromosome: {chromosome}"
+            tqdm.tqdm.write(logstr)
+            write_log(logstr)
+        torch.save(p, 'population.pt')
     envs.close()
+
+RECORD = False
+RENDER = True
+if __name__ == "__main__":
+    #test_conv()
+    run_test()
