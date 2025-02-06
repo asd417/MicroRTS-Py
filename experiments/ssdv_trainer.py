@@ -345,7 +345,7 @@ def run_test():
             lines = file.readlines()
             last_line = lines[-1].strip().split()
             if last_line[0] == "Generation":
-                gi = last_line[1]
+                gi = int(last_line[1])
                 print(f"Continuing from Generation {gi}")
 
     maxgen = 1000
