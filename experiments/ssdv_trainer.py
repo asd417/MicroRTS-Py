@@ -13,7 +13,7 @@ import gymnasium as gym
 from stable_baselines3.common.vec_env import VecVideoRecorder
 
 from gym_microrts import microrts_ai
-from gym_microrts.envs.vec_env import MicroRTSGridModeVecEnv, MicroRTSGridModeSharedMemVecEnv
+from gym_microrts.envs.vec_env_custom import MicroRTSGridModeVecEnv
 
 #TODO: Write abstractions like broodwar
 #See Unitaction.java :: fromVectorAction() to see how this output space makes sense
@@ -131,7 +131,7 @@ class SSVD:
         weightsO = chromosome[min(self.inputSizeH,self.inputSizeW)**2:].view(self.outputSize, self.inputSizeW * self.inputSizeH)   # Second matrix (m x n^2)
         return weights1, weightsO
     
-def evaluateSSVD(weights1,weightsO,input : torch.Tensor):
+def evaluateSSVD(weights1,weightsO,input : torch.Tensor) -> torch.Tensor:
     input = input.float() # ensure that the input is floating point tensor
     U, S, Vh = torch.linalg.svd(input)
     Sigma = torch.zeros(input.shape, device=input.device)
@@ -155,14 +155,6 @@ def softmax(x, axis=None):
     y = np.exp(x)
     return y / y.sum(axis=axis, keepdims=True)
 
-def sample(logits):
-    # https://stackoverflow.com/a/40475357/6611317
-    p = softmax(logits, axis=1)
-    c = p.cumsum(axis=1)
-    u = np.random.rand(len(c), 1)
-    choices = (u < c).argmax(axis=1)
-    return choices.reshape(-1, 1)
-
 def start_game(envs, weights1, weightsO, seed, device="cpu", maxstep=10000):
     envs.action_space.seed(seed)
     obs = envs.reset()
@@ -176,43 +168,71 @@ def start_game(envs, weights1, weightsO, seed, device="cpu", maxstep=10000):
         action_mask = envs.get_action_mask()
         #print(f"Action Mask Shape: {action_mask.shape}")
         action_mask = action_mask.reshape(-1, action_mask.shape[-1])
-        input_tensor_raw = np.array(obs)
-        conv3d = torch.nn.Conv3d(in_channels=1, out_channels=1, kernel_size=(4, 3, 3), stride=1, padding=0, bias=False)
 
-        inputTensor = torch.from_numpy(input_tensor_raw).to(device).float()
+        inputTensor = torch.from_numpy(obs).to(device).float().squeeze()
+        p = 0
+        # the unit has 1 hit point -> [0,1,0,0,0]
+        health_t = inputTensor[:, :, p:p+5]
+        depth_weights = torch.arange(5,device=inputTensor.device).reshape(1, 1, 5)
+        weighted_tensor = health_t * depth_weights
+        health_t = weighted_tensor.sum(dim=2)
+        p += 5
+        # the unit is not carrying any resources, -> [1,0,0,0,0]
+        resource_t = inputTensor[:, :, p:p+5]
+        depth_weights = torch.arange(5,device=inputTensor.device).reshape(1, 1, 5)
+        weighted_tensor = resource_t * depth_weights
+        resource_t = weighted_tensor.sum(dim=2)
+        p += 5
+        # the unit is owned by Player 1 -> [0,1,0]
+        owner_t = inputTensor[:, :, p:p+3]
+        depth_weights = torch.arange(3,device=inputTensor.device).reshape(1, 1, 3)
+        weighted_tensor = owner_t * depth_weights
+        owner_t = weighted_tensor.sum(dim=2)
+        p += 3
+        # the unit is a worker -> [0,0,0,0,1,0,0,0]
+        type_t = inputTensor[:, :, p:p+8]
+        depth_weights = torch.arange(8,device=inputTensor.device).reshape(1, 1, 8)
+        weighted_tensor = type_t * depth_weights
+        type_t = weighted_tensor.sum(dim=2)
+        p += 8
+        # the unit is not executing any actions -> [1,0,0,0,0,0]
+        action_t = inputTensor[:, :, p:p+6]
+        depth_weights = torch.arange(6,device=inputTensor.device).reshape(1, 1, 6)
+        weighted_tensor = action_t * depth_weights
+        action_t = weighted_tensor.sum(dim=2)
+        p += 6
+        # the unit is standing at free terrain cell -> [1,0]
+        #print(f"p: {p}")
+        terrain_t = inputTensor[:, :, p:p+2]
+        depth_weights = torch.arange(2,device=inputTensor.device).reshape(1, 1, 2)
+        weighted_tensor = terrain_t * depth_weights
+        terrain_t = weighted_tensor.sum(dim=2)
+        p += 2
+        #print(health_t.shape)
+        health_t = health_t.unsqueeze(-1)
+        resource_t = resource_t.unsqueeze(-1)
+        owner_t = owner_t.unsqueeze(-1)
+        type_t = type_t.unsqueeze(-1)
+        action_t = action_t.unsqueeze(-1)
+        terrain_t = terrain_t.unsqueeze(-1)
+        inputTensor = torch.cat((health_t, resource_t, owner_t, type_t, action_t, terrain_t), dim=2)
+        inputTensor = inputTensor.unsqueeze(0).unsqueeze(0)
+        #print(inputTensor.shape)
         m = torch.nn.Conv3d(1, 1, (1, 1, 4), stride=(1, 1, 2), padding=(0, 0, 2))
+        m.to(inputTensor.device)
         it : torch.Tensor = m(inputTensor)
-        #print(input.shape)
-        #print(output.shape)
         it = m(it)
-        #print(output.shape)
         it = m(it)
-        #print(output.shape)
-        it = m(it)
-        m = torch.nn.Conv3d(1, 1, (1, 1, 3), stride=(1, 1, 2), padding=(0, 0, 0))
+        m = torch.nn.Conv3d(1, 1, (1, 1, 2), stride=(1, 1, 1), padding=(0, 0, 0))
+        m.to(inputTensor.device)
         it = m(it)
         it = it.squeeze()
-
-        #print(inputTensor)
         outputTensor = evaluateSSVD(weights1,weightsO,it)
         del inputTensor
-        outputTensor = outputTensor.reshape(-1, action_mask.shape[-1])
-        outputTensor[action_mask == 0] = -9e8 # mask action with action mask
         # sample valid actions
-        action = np.concatenate(
-            (
-                sample(action_mask[:, 0:6]),  # action type
-                sample(action_mask[:, 6:10]),  # move parameter
-                sample(action_mask[:, 10:14]),  # harvest parameter
-                sample(action_mask[:, 14:18]),  # return parameter
-                sample(action_mask[:, 18:22]),  # produce_direction parameter
-                sample(action_mask[:, 22:29]),  # produce_unit_type parameter
-                # attack_target parameter
-                sample(action_mask[:, 29 : sum(envs.action_space.nvec[1:])]),
-            ),
-            axis=1,
-        )
-        
+        num_unit_type = 6
+        # Concatenate slices of outputTensor
+        action = outputTensor.to("cpu").detach().numpy()
         # doing the following could result in invalid actions
         # action = np.array([envs.action_space.sample()])
         obs, reward, done, info = envs.step(action)

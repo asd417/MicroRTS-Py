@@ -1,14 +1,14 @@
 import numpy as np
 
 from gym_microrts import microrts_ai
-from gym_microrts.envs.vec_env import MicroRTSGridModeVecEnv
+from gym_microrts.envs.vec_env_custom import MicroRTSGridModeVecEnv
 
 # if you want to record videos, install stable-baselines3 and use its `VecVideoRecorder`
 # from stable_baselines3.common.vec_env import VecVideoRecorder
 
 
 envs = MicroRTSGridModeVecEnv(
-    num_selfplay_envs=2,
+    num_selfplay_envs=0,
     num_bot_envs=1,
     max_steps=2000,
     render_theme=2,
