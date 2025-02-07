@@ -14,6 +14,7 @@ from stable_baselines3.common.vec_env import VecVideoRecorder
 
 from gym_microrts import microrts_ai
 from gym_microrts.envs.vec_env_custom import MicroRTSGridModeVecEnv
+from gym_microrts.envs.vec_mcts_env import MicroRTSMCTSEnv
 
 #TODO: Write abstractions like broodwar
 #See Unitaction.java :: fromVectorAction() to see how this output space makes sense
@@ -153,7 +154,6 @@ def softmax(x, axis=None):
     return y / y.sum(axis=axis, keepdims=True)
 
 def start_game(envs, weights1, weightsO, seed, device="cpu", maxstep=10000):
-    envs.action_space.seed(seed)
     obs = envs.reset()
     reward_sum = 0
     for i in range(maxstep):
@@ -162,10 +162,6 @@ def start_game(envs, weights1, weightsO, seed, device="cpu", maxstep=10000):
                 envs.render(mode="rgb_array")
             else:
                 envs.render()
-        action_mask = envs.get_action_mask()
-        #print(f"Action Mask Shape: {action_mask.shape}")
-        action_mask = action_mask.reshape(-1, action_mask.shape[-1])
-
         inputTensor = torch.from_numpy(obs).to(device).float().squeeze()
         p = 0
         # the unit has 1 hit point -> [0,1,0,0,0]
@@ -248,6 +244,26 @@ def fitness(envs, chromosome, ssvd, device, trials=10):
     del weightsO
     return (sum(fits) + 10 * trials)/float(trials)
 
+def start_game_mcts(envs, chromosome, device="cpu", maxstep=10000):
+    envs.reset(chromosome)
+    reward_sum = 0
+    for i in range(maxstep):
+        if RENDER:
+            if RECORD:
+                envs.render(mode="rgb_array")
+            else:
+                envs.render()
+        _, reward, done, info = envs.step()
+        reward_sum += sum(reward)
+        if done.any():
+            return reward_sum
+    return reward_sum
+
+def fitness_mcts(envs, chromosome, ssvd, device, trials=10):
+    # chromosome is a 1D vector
+    fits = [start_game_mcts(envs, chromosome, device=device) for x in range(trials)]
+    return sum(fits) + 10
+
 def load_files(pt_file, txt_file):
     # Check if the .pt file exists
     if os.path.exists(pt_file):
@@ -323,7 +339,7 @@ def load_or_create_pop(size, name="population"):
     return gi, p
 
 # openai es
-def run_test_es(ssvd, envs, trials, pop_size, max_iter, device, name="OpenAI-ES"):
+def run_test_es(ssvd, envs, trials, pop_size, max_iter, device, fitness_func, name="OpenAI-ES"):
     test_name = name + "-population"
     sigma = 0.1    # noise standard deviation
     alpha = 0.001  # learning rate
@@ -336,7 +352,7 @@ def run_test_es(ssvd, envs, trials, pop_size, max_iter, device, name="OpenAI-ES"
         R = torch.zeros(pop_size)
         for j in range(pop_size):
             w_try = w + sigma*N[j]
-            f = fitness(envs, w_try, ssvd, device, trials=trials)
+            f = fitness_func(envs, w_try, ssvd, device, trials=trials)
             R[j] = f
             tqdm.tqdm.write(f"Fitness: {f}")
             progress.update(1)
@@ -353,7 +369,7 @@ def run_test_es(ssvd, envs, trials, pop_size, max_iter, device, name="OpenAI-ES"
         save_pop(w, name=test_name)
 
 
-def run_test_ga(ssvd, envs, trials, pop_size, max_iter, device, name="GA", elitism=0.1):
+def run_test_ga(ssvd, envs, trials, pop_size, max_iter, device, fitness_func, name="GA", elitism=0.1):
     test_name = name + "-population"
     gi, p = load_or_create_pop(pop_size, name=test_name)
     mutation_rate = 0.5
@@ -368,7 +384,7 @@ def run_test_ga(ssvd, envs, trials, pop_size, max_iter, device, name="GA", eliti
         ev_f = []
         progress = tqdm.tqdm(total=len(p), desc=f"{test_name} Generation {gi}/{max_iter}")
         for chromosome in p:
-            f = fitness(envs, chromosome, ssvd, device, trials=trials) 
+            f = fitness_func(envs, chromosome, ssvd, device, trials=trials) 
             tqdm.tqdm.write(f"Fitness: {f}")
             if f > best_fitness:
                 best_fitness = f
@@ -411,17 +427,31 @@ def run_test_ga(ssvd, envs, trials, pop_size, max_iter, device, name="GA", eliti
 
 RECORD = False
 RENDER = True
+USE_MCTS = False
 if __name__ == "__main__":
     #test_conv()
-    envs = MicroRTSGridModeVecEnv(
-        num_selfplay_envs=0,
-        num_bot_envs=1,
-        max_steps=2000,
-        render_theme=2,
-        ai2s=[microrts_ai.coacAI for _ in range(1)],
-        map_paths=["maps/16x16/basesWorkers16x16.xml"],
-        reward_weight=np.array([10.0, 1.0, 1.0, 0.2, 1.0, 4.0]),
-    )
+    if not USE_MCTS:
+        envs = MicroRTSGridModeVecEnv(
+            num_selfplay_envs=0,
+            num_bot_envs=1,
+            max_steps=2000,
+            render_theme=2,
+            ai2s=[microrts_ai.coacAI for _ in range(1)],
+            map_paths=["maps/16x16/basesWorkers16x16.xml"],
+            reward_weight=np.array([10.0, 1.0, 1.0, 0.2, 1.0, 4.0]),
+        )
+        fitness_f = fitness
+    else:
+        envs = MicroRTSMCTSEnv(
+            num_selfplay_envs=0,
+            num_bot_envs=1,
+            max_steps=2000,
+            render_theme=2,
+            ai2s=[microrts_ai.coacAI for _ in range(1)],
+            map_paths=["maps/16x16/basesWorkers16x16.xml"],
+            reward_weight=np.array([10.0, 1.0, 1.0, 0.2, 1.0, 4.0]),
+        )
+        fitness_f = fitness_mcts
     if RECORD:
         envs = VecVideoRecorder(envs, "videos", record_video_trigger=lambda x: x % 4000 == 0, video_length=2000)
 
@@ -434,6 +464,6 @@ if __name__ == "__main__":
     print(f"Action Space size: {actionSpace}")
 
     ssvd = SSVD(input_w, input_h, actionSpace)
-    #run_test_ga(ssvd, envs, 10, 100, 300, device, name="GA_100_10%", elitism=0.1)
-    run_test_ga(ssvd, envs, 5, 100, 300, device, name="GA_5_100_10%", elitism=0.1)
-    #run_test_es(ssvd, envs, 10, 50, 300, device)
+    #run_test_ga(ssvd, envs, 10, 100, 300, device, fitness_f, name="GA_100_10%", elitism=0.1)
+    run_test_ga(ssvd, envs, 5, 100, 300, device, fitness_f, name="GA_5_100_10%", elitism=0.1)
+    #run_test_es(ssvd, envs, 10, 50, 300, device, fitness_f)
