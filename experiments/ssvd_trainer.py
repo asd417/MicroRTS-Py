@@ -240,13 +240,13 @@ def start_game(envs, weights1, weightsO, seed, device="cpu", maxstep=10000):
             return reward_sum
     return reward_sum
 
-def fitness(envs, chromosome, ssvd, device, trials=1):
+def fitness(envs, chromosome, ssvd, device, trials=10):
     # chromosome is a 1D vector
     weights1, weightsO = ssvd.chromosome_to_weights(chromosome)
     fits = [start_game(envs, weights1, weightsO, x, device=device) for x in range(trials)]
     del weights1
     del weightsO
-    return sum(fits) + 10
+    return (sum(fits) + 10 * trials)/float(trials)
 
 def load_files(pt_file, txt_file):
     # Check if the .pt file exists
@@ -282,10 +282,8 @@ def test_conv():
     # m = torch.nn.Conv3d(1, 1, 3, stride=2)
     # non-square kernels and unequal stride and with padding
     m = torch.nn.Conv3d(1, 1, (1, 1, 4), stride=(1, 1, 2), padding=(0, 0, 2))
-    
     input = torch.randn(1, 1, 16, 16, 29)
     output : torch.Tensor = m(input)
-    
     print(input.shape)
     print(output.shape)
     output = m(output)
@@ -325,24 +323,24 @@ def load_or_create_pop(size, name="population"):
     return gi, p
 
 # openai es
-def run_test_es(ssvd, envs, pop_size, max_iter, device):
-    test_name = "population_es"
+def run_test_es(ssvd, envs, trials, pop_size, max_iter, device, name="OpenAI-ES"):
+    test_name = name + "-population"
     sigma = 0.1    # noise standard deviation
     alpha = 0.001  # learning rate
     gen_start, w = load_or_create_pop(1, name=test_name)
     
     for i in range(gen_start, max_iter):
         w = w.squeeze(0)
-        progress = tqdm.tqdm(total=pop_size, desc=f"OpenAI-ES Generation {i}/{max_iter}")
+        progress = tqdm.tqdm(total=pop_size, desc=f"{test_name} Generation {i}/{max_iter}")
         N = torch.randn((pop_size, ssvd.get_chromosome_size(), 1), device=device)
         R = torch.zeros(pop_size)
         for j in range(pop_size):
             w_try = w + sigma*N[j]
-            f = fitness(envs, w_try, ssvd, device)
+            f = fitness(envs, w_try, ssvd, device, trials=trials)
             R[j] = f
             tqdm.tqdm.write(f"Fitness: {f}")
             progress.update(1)
-        logstr = f"OpenAI-ES Generation {i} Average: {torch.mean(R)} StDev: {torch.std(R)}"
+        logstr = f"Generation {i} {name} Average: {torch.mean(R)} StDev: {torch.std(R)}"
         tqdm.tqdm.write(logstr)
         write_log(logstr, name=test_name)
         A = (R - torch.mean(R)) / torch.std(R)
@@ -355,10 +353,10 @@ def run_test_es(ssvd, envs, pop_size, max_iter, device):
         save_pop(w, name=test_name)
 
 
-def run_test_ga(ssvd, envs, pop_size, max_iter, device):
-    gi, p = load_or_create_pop(pop_size)
+def run_test_ga(ssvd, envs, trials, pop_size, max_iter, device, name="GA", elitism=0.1):
+    test_name = name + "-population"
+    gi, p = load_or_create_pop(pop_size, name=test_name)
     mutation_rate = 0.5
-    population_retention = 0.5  # 50 percent of the networks are preserved
 
     best_chromosome = None
     best_fitness = 0
@@ -368,9 +366,9 @@ def run_test_ga(ssvd, envs, pop_size, max_iter, device):
             win = True
             break
         ev_f = []
-        progress = tqdm.tqdm(total=len(p), desc=f"Generation {gi}/{max_iter}")
+        progress = tqdm.tqdm(total=len(p), desc=f"{test_name} Generation {gi}/{max_iter}")
         for chromosome in p:
-            f = fitness(envs, chromosome, ssvd, device) 
+            f = fitness(envs, chromosome, ssvd, device, trials=trials) 
             tqdm.tqdm.write(f"Fitness: {f}")
             if f > best_fitness:
                 best_fitness = f
@@ -380,16 +378,16 @@ def run_test_ga(ssvd, envs, pop_size, max_iter, device):
             ev_f.append(f)
             progress.update(1)
         avg = sum(ev_f) / len(ev_f)
-        logstr = f"GA Generation {gi} Average: {avg} StDev: {statistics.stdev(ev_f)}"
+        logstr = f"Generation {gi} {name} Average: {avg} StDev: {statistics.stdev(ev_f)}"
         tqdm.tqdm.write(logstr)
-        write_log(logstr)
+        write_log(logstr, name=test_name)
         if(not win):
             ev_p = list(zip(p,ev_f))
             ev_p_sorted = sorted(ev_p, key=lambda x: x[1], reverse=True) # sort by fitness from highest to lowest
-            elitism = int(np * population_retention)
-            ev_p_sorted = ev_p_sorted[:elitism]
+            elites = int(pop_size * elitism)
+            ev_p_sorted = ev_p_sorted[:elites]
             new_p = []
-            for i in range(np - elitism): # GA
+            for i in range(pop_size - elites): # GA
                 print("Roulette Selection...")
                 parent1, parent2 = roulette_wheel_selection(ev_p, device)
                 print("Crossover...")
@@ -404,11 +402,11 @@ def run_test_ga(ssvd, envs, pop_size, max_iter, device):
         else:
             logstr = f"Training Done | Best Fitness: {best_fitness}"
             tqdm.tqdm.write(logstr)
-            write_log(logstr)
+            write_log(logstr, name=test_name)
             logstr = f"Chromosome: {chromosome}"
             tqdm.tqdm.write(logstr)
-            write_log(logstr)
-        save_pop(p)
+            write_log(logstr, name=test_name)
+        save_pop(p, name=test_name)
     envs.close()
 
 RECORD = False
@@ -436,5 +434,6 @@ if __name__ == "__main__":
     print(f"Action Space size: {actionSpace}")
 
     ssvd = SSVD(input_w, input_h, actionSpace)
-    #run_test_ga(ssvd, envs, 50, 300, device)
-    run_test_es(ssvd, envs, 50, 300, device)
+    #run_test_ga(ssvd, envs, 10, 100, 300, device, name="GA_100_10%", elitism=0.1)
+    run_test_ga(ssvd, envs, 5, 100, 300, device, name="GA_5_100_10%", elitism=0.1)
+    #run_test_es(ssvd, envs, 10, 50, 300, device)
