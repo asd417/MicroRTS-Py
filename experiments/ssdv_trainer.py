@@ -19,10 +19,7 @@ from gym_microrts.envs.vec_env_custom import MicroRTSGridModeVecEnv
 #See Unitaction.java :: fromVectorAction() to see how this output space makes sense
 
 def create_population(shape, size, device):
-    p = []
-    for i in range(size):
-        p.append(torch.randn(shape, device=device))
-    return p
+    return torch.stack([torch.randn(shape, device=device) for _ in range(size)])
 
 def roulette_wheel_selection(population, device="cpu"):
     """
@@ -249,7 +246,7 @@ def fitness(envs, chromosome, ssvd, device, trials=1):
     fits = [start_game(envs, weights1, weightsO, x, device=device) for x in range(trials)]
     del weights1
     del weightsO
-    return sum(fits)
+    return sum(fits) + 10
 
 def load_files(pt_file, txt_file):
     # Check if the .pt file exists
@@ -271,9 +268,9 @@ def load_files(pt_file, txt_file):
     
     return tensor_data, text_data
 
-def write_log(log_message, log_file='population_log.txt'):
+def write_log(log_message, name="population"):
     # Open the log file in append mode ('a'), so new logs are added to the end
-    with open(log_file, 'a') as file:
+    with open(name+"_log.txt", 'a') as file:
         file.write(log_message + '\n')
     #print(f"Log written to {log_file}")
 
@@ -307,58 +304,73 @@ def test_conv():
     #print(dout(29, 5, stride=3, padding=2))
     return
 
+def save_pop(p, name="population"):
+    torch.save(p, name+'.pt')
 
-def run_test():
-    envs = MicroRTSGridModeVecEnv(
-        num_selfplay_envs=0,
-        num_bot_envs=1,
-        max_steps=2000,
-        render_theme=2,
-        ai2s=[microrts_ai.coacAI for _ in range(1)],
-        map_paths=["maps/16x16/basesWorkers16x16.xml"],
-        reward_weight=np.array([10.0, 1.0, 1.0, 0.2, 1.0, 4.0]),
-    )
-    if RECORD:
-        envs = VecVideoRecorder(envs, "videos", record_video_trigger=lambda x: x % 4000 == 0, video_length=2000)
-
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    population = 20
-    input_h = envs.height
-    input_w = envs.width
-    actionSpace = sum(envs.action_space.nvec)
-    print(f"Observation Space Height: {input_h}")
-    print(f"Observation Space Width: {input_w}")
-    print(f"Action Space size: {actionSpace}")
-
-    ssvd = SSVD(input_w, input_h, actionSpace)
-    p, logfile = load_files("population.pt", "population_log.txt")
+def load_or_create_pop(size, name="population"):
+    p, logfile = load_files(name+".pt", name+"_log.txt")
+    gi = 1
     if p is None:
-        p = create_population((ssvd.get_chromosome_size(),1), population, device)
-        with open("population_log.txt", 'w') as file:
+        p = create_population((ssvd.get_chromosome_size(),1), size, device)
+        with open(name+"_log.txt", 'w') as file:
             file.write("Starting new training loop" + '\n')
 
-    mutation_rate = 0.5
-    win = False
-    gi = 1
     if not logfile is None:
-        with open("population_log.txt", 'r') as file:
+        with open(name+"_log.txt", 'r') as file:
             lines = file.readlines()
             last_line = lines[-1].strip().split()
             if last_line[0] == "Generation":
                 gi = int(last_line[1])
                 print(f"Continuing from Generation {gi}")
+    return gi, p
 
-    maxgen = 1000
+# openai es
+def run_test_es(ssvd, envs, pop_size, max_iter, device):
+    test_name = "population_es"
+    sigma = 0.1    # noise standard deviation
+    alpha = 0.001  # learning rate
+    gen_start, w = load_or_create_pop(1, name=test_name)
+    
+    for i in range(gen_start, max_iter):
+        w = w.squeeze(0)
+        progress = tqdm.tqdm(total=pop_size, desc=f"OpenAI-ES Generation {i}/{max_iter}")
+        N = torch.randn((pop_size, ssvd.get_chromosome_size(), 1), device=device)
+        R = torch.zeros(pop_size)
+        for j in range(pop_size):
+            w_try = w + sigma*N[j]
+            f = fitness(envs, w_try, ssvd, device)
+            R[j] = f
+            tqdm.tqdm.write(f"Fitness: {f}")
+            progress.update(1)
+        logstr = f"OpenAI-ES Generation {i} Average: {torch.mean(R)} StDev: {torch.std(R)}"
+        tqdm.tqdm.write(logstr)
+        write_log(logstr, name=test_name)
+        A = (R - torch.mean(R)) / torch.std(R)
+        N = N.squeeze()
+        w = w.squeeze(-1)
+        print(f"N.T @ A {(N.T @ A).shape}")
+        print(f"w {w.shape}")
+        w = w + alpha/(pop_size*sigma) * N.T @ A
+        w = w.unsqueeze(0).unsqueeze(-1)
+        save_pop(w, name=test_name)
+
+
+def run_test_ga(ssvd, envs, pop_size, max_iter, device):
+    gi, p = load_or_create_pop(pop_size)
+    mutation_rate = 0.5
+    population_retention = 0.5  # 50 percent of the networks are preserved
+
     best_chromosome = None
     best_fitness = 0
+    win = False
     while win == False:
-        if(maxgen < gi):
+        if(max_iter < gi):
             win = True
             break
         ev_f = []
-        progress = tqdm.tqdm(total=len(p), desc=f"Generation {gi}/{maxgen}")
+        progress = tqdm.tqdm(total=len(p), desc=f"Generation {gi}/{max_iter}")
         for chromosome in p:
-            f = fitness(envs, chromosome, ssvd, device) + 10
+            f = fitness(envs, chromosome, ssvd, device) 
             tqdm.tqdm.write(f"Fitness: {f}")
             if f > best_fitness:
                 best_fitness = f
@@ -368,16 +380,16 @@ def run_test():
             ev_f.append(f)
             progress.update(1)
         avg = sum(ev_f) / len(ev_f)
-        logstr = f"Generation {gi} Average: {avg} StDev: {statistics.stdev(ev_f)}"
+        logstr = f"GA Generation {gi} Average: {avg} StDev: {statistics.stdev(ev_f)}"
         tqdm.tqdm.write(logstr)
         write_log(logstr)
         if(not win):
             ev_p = list(zip(p,ev_f))
             ev_p_sorted = sorted(ev_p, key=lambda x: x[1], reverse=True) # sort by fitness from highest to lowest
-            elitism = int(population * 0.9) # 90 percent of the networks are preserved
+            elitism = int(np * population_retention)
             ev_p_sorted = ev_p_sorted[:elitism]
             new_p = []
-            for i in range(population - elitism): # GA
+            for i in range(np - elitism): # GA
                 print("Roulette Selection...")
                 parent1, parent2 = roulette_wheel_selection(ev_p, device)
                 print("Crossover...")
@@ -396,11 +408,33 @@ def run_test():
             logstr = f"Chromosome: {chromosome}"
             tqdm.tqdm.write(logstr)
             write_log(logstr)
-        torch.save(p, 'population.pt')
+        save_pop(p)
     envs.close()
 
 RECORD = False
 RENDER = True
 if __name__ == "__main__":
     #test_conv()
-    run_test()
+    envs = MicroRTSGridModeVecEnv(
+        num_selfplay_envs=0,
+        num_bot_envs=1,
+        max_steps=2000,
+        render_theme=2,
+        ai2s=[microrts_ai.coacAI for _ in range(1)],
+        map_paths=["maps/16x16/basesWorkers16x16.xml"],
+        reward_weight=np.array([10.0, 1.0, 1.0, 0.2, 1.0, 4.0]),
+    )
+    if RECORD:
+        envs = VecVideoRecorder(envs, "videos", record_video_trigger=lambda x: x % 4000 == 0, video_length=2000)
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    input_h = envs.height
+    input_w = envs.width
+    actionSpace = envs.height * envs.width + 6 # board + unit type count
+    print(f"Observation Space Height: {input_h}")
+    print(f"Observation Space Width: {input_w}")
+    print(f"Action Space size: {actionSpace}")
+
+    ssvd = SSVD(input_w, input_h, actionSpace)
+    #run_test_ga(ssvd, envs, 50, 300, device)
+    run_test_es(ssvd, envs, 3, 300, device)

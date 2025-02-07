@@ -7,6 +7,7 @@ wandb
 openaigym.*
 experiments/paper/**/**.pt
 experiments/models/**/**.pt
+*.pt
 *.pth
 experiments/mask/*
 benchmark/scripts/*
