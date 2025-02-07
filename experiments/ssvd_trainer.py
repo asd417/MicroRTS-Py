@@ -348,8 +348,8 @@ def run_test_es(ssvd, envs, pop_size, max_iter, device):
         A = (R - torch.mean(R)) / torch.std(R)
         N = N.squeeze()
         w = w.squeeze(-1)
-        print(f"N.T @ A {(N.T @ A).shape}")
-        print(f"w {w.shape}")
+        #print(f"N.T @ A {(N.T @ A).shape}")
+        #print(f"w {w.shape}")
         w = w + alpha/(pop_size*sigma) * N.T @ A
         w = w.unsqueeze(0).unsqueeze(-1)
         save_pop(w, name=test_name)
@@ -437,4 +437,4 @@ if __name__ == "__main__":
 
     ssvd = SSVD(input_w, input_h, actionSpace)
     #run_test_ga(ssvd, envs, 50, 300, device)
-    run_test_es(ssvd, envs, 3, 300, device)
+    run_test_es(ssvd, envs, 50, 300, device)
