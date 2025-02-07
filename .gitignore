@@ -138,7 +138,6 @@ dmypy.json
 
 # PyCharm
 .idea/
-gym_microrts/microrts
 
 population.pt
 population_log.txt
