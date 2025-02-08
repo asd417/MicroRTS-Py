@@ -16,8 +16,8 @@ from gym_microrts import microrts_ai
 from gym_microrts.envs.vec_env_custom import MicroRTSGridModeVecEnv
 from gym_microrts.envs.vec_mcts_env import MicroRTSMCTSEnv
 
-#TODO: Write abstractions like broodwar
-#See Unitaction.java :: fromVectorAction() to see how this output space makes sense
+from torch.utils.tensorboard import SummaryWriter
+import datetime
 
 def create_population(shape, size, device):
     return torch.stack([torch.randn(shape, device=device) for _ in range(size)])
@@ -494,6 +494,18 @@ if __name__ == "__main__1":
     #run_test_es(ssvd, envs, 10, 50, 300, device)
 
 if __name__ == "__main__":
+    log_dir = f"runs/experiment_{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    writer = SummaryWriter(log_dir)
+    writer.add_scalar("Loss/train", 0.1, 1)  # ✅ Logs loss over time
+    writer.add_scalar("Loss/train", 0.4, 2)
+    writer.add_scalar("Loss/train", 0.5, 3)
+    sample_input = torch.randn(1, 3, 32, 32)  
+    writer.add_histogram("histor", sample_input, 1)
+    sample_input = torch.randn(1, 3, 32, 32)
+    writer.add_histogram("histor", sample_input, 2)
+    sample_input = torch.randn(1, 3, 32, 32)
+    writer.add_histogram("histor", sample_input, 3)
+    writer.close()
 
     ssvd = SSVDVariable(10, 12, 8, [2, 2])
     t = torch.randn(ssvd.get_chromosome_size())
