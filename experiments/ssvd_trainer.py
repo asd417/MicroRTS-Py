@@ -111,6 +111,32 @@ def matrix_to_vector_custom(matrix: torch.Tensor, m : int, seed : int):
     transformed_vector = W @ vector
     return transformed_vector
 
+class SSVDVariable:
+    def __init__(self, input_w, input_h, outputSize, structure, k='full'):
+        self.inputSizeW = input_w
+        self.inputSizeH = input_h
+        self.outputSize = outputSize
+        self.pre_s_tensors = structure[0]
+        self.post_s_tensors = structure[1]
+
+    def get_chromosome_size(self):
+        return self.pre_s_tensors * min(self.inputSizeH,self.inputSizeW)**2 + self.post_s_tensors * self.inputSizeW * self.inputSizeH + self.outputSize * self.inputSizeW * self.inputSizeH
+
+    def chromosome_to_weights(self, chromosome : torch.Tensor):
+        expected_size = self.get_chromosome_size()
+        if chromosome.shape[0] != expected_size:
+            raise ValueError(f"Vector size must be {expected_size}, but got {chromosome.shape[0]}.")
+        weights_1 = chromosome[
+            : self.pre_s_tensors * min(self.inputSizeH,self.inputSizeW)**2
+            ].view(self.pre_s_tensors, min(self.inputSizeH,self.inputSizeW), min(self.inputSizeH,self.inputSizeW))      # First matrix (n x n)
+        weights_2 = chromosome[
+            self.pre_s_tensors * min(self.inputSizeH,self.inputSizeW)**2 : 
+            self.pre_s_tensors * min(self.inputSizeH,self.inputSizeW)**2 + self.post_s_tensors * self.inputSizeW * self.inputSizeH
+            ].view(self.post_s_tensors, self.inputSizeW, self.inputSizeH)   # Second matrix (m x n^2)
+        weightO = chromosome[self.pre_s_tensors * min(self.inputSizeH,self.inputSizeW)**2 + self.post_s_tensors * self.inputSizeW * self.inputSizeH : 
+                             ].view(self.outputSize, self.inputSizeW * self.inputSizeH)
+        return weights_1, weights_2, weightO
+
 class SSVD:
     def __init__(self, input_w, input_h, outputSize, k='full'):
         self.inputSizeW = input_w
@@ -120,11 +146,10 @@ class SSVD:
     def get_chromosome_size(self):
         return min(self.inputSizeH,self.inputSizeW)**2 + self.outputSize * self.inputSizeW * self.inputSizeH
         
-    def chromosome_to_weights(self, chromosome):
+    def chromosome_to_weights(self, chromosome : torch.Tensor):
         expected_size = self.get_chromosome_size()
         if chromosome.shape[0] != expected_size:
             raise ValueError(f"Vector size must be {expected_size}, but got {chromosome.shape[0]}.")
-
         weights1 = chromosome[: min(self.inputSizeH,self.inputSizeW)**2].view(min(self.inputSizeH,self.inputSizeW), min(self.inputSizeH,self.inputSizeW))      # First matrix (n x n)
         weightsO = chromosome[min(self.inputSizeH,self.inputSizeW)**2:].view(self.outputSize, self.inputSizeW * self.inputSizeH)   # Second matrix (m x n^2)
         return weights1, weightsO
@@ -428,7 +453,7 @@ def run_test_ga(ssvd, envs, trials, pop_size, max_iter, device, fitness_func, na
 RECORD = False
 RENDER = True
 USE_MCTS = False
-if __name__ == "__main__":
+if __name__ == "__main__1":
     #test_conv()
     if not USE_MCTS:
         envs = MicroRTSGridModeVecEnv(
@@ -464,6 +489,22 @@ if __name__ == "__main__":
     print(f"Action Space size: {actionSpace}")
 
     ssvd = SSVD(input_w, input_h, actionSpace)
-    #run_test_ga(ssvd, envs, 10, 100, 300, device, fitness_f, name="GA_100_10%", elitism=0.1)
-    run_test_ga(ssvd, envs, 5, 100, 300, device, fitness_f, name="GA_5_100_10%", elitism=0.1)
-    #run_test_es(ssvd, envs, 10, 50, 300, device, fitness_f)
+    #run_test_ga(ssvd, envs, 10, 100, 300, device, name="GA_100_10%", elitism=0.1)
+    run_test_ga(ssvd, envs, 5, 100, 300, device, name="GA_5_100_10%", elitism=0.1)
+    #run_test_es(ssvd, envs, 10, 50, 300, device)
+
+if __name__ == "__main__":
+
+    ssvd = SSVDVariable(10, 12, 8, [2, 2])
+    t = torch.randn(ssvd.get_chromosome_size())
+    w1, w2, w3 = ssvd.chromosome_to_weights(t)
+    t1 = torch.randn((10,12))
+    U, S, Vh = torch.linalg.svd(t1)
+    Sigma = torch.zeros(t1.shape)
+    Sigma[:, :S.size(0)] = torch.diag(S)
+    print(U.shape)
+    print(w1.shape)
+    print(Sigma.shape)
+    print(w2.shape)
+    print(Vh.shape)
+    print(w3.shape)
