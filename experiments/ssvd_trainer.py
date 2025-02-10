@@ -523,8 +523,11 @@ RENDER = False
 USE_MCTS = False
 if __name__ == "__main__":
     #test_conv()
+    env_num = 5
+    pop = 40
+    max_gen = 300
+    elitism = 0.1
     if not USE_MCTS:
-        env_num = 5
         envs = MicroRTSGridModeVecEnv(
             num_selfplay_envs=0,
             num_bot_envs=env_num,
@@ -549,8 +552,8 @@ if __name__ == "__main__":
     if RECORD:
         envs = VecVideoRecorder(envs, "videos", record_video_trigger=lambda x: x % 4000 == 0, video_length=2000)
 
-    #device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    device = 'cpu'
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    #device = 'cpu'
     input_h = envs.height
     input_w = envs.width
     actionSpace = envs.height * envs.width + 6 # board + unit type count
@@ -560,7 +563,7 @@ if __name__ == "__main__":
 
     ssvd = SSVDVariable(input_w, input_h, actionSpace, [2,2])
     #run_test_ga(ssvd, envs, 10, 100, 300, device, name="GA_100_10%", elitism=0.1)
-    run_test_ga(ssvd, envs, 5, 100, 300, device, fitness_f, name="GA_5_100_10%", elitism=0.1)
+    run_test_ga(ssvd, envs, env_num, pop, max_gen, device, fitness_f, name=f"GA_{env_num}_{pop}_{elitism * 100}%", elitism=0.1)
     #run_test_es(ssvd, envs, 10, 50, 300, device)
 
 if __name__ == "__main__1":

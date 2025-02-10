@@ -14,7 +14,7 @@ $argFile = "sources.txt"
 $javaFiles | Set-Content -Path $argFile
 
 # Compile Java files using the argument file
-javac -d "./build" -cp "./lib/*:./lib/ejml-v0.42-libs/*" -sourcepath "./src" "@$argFile"
+javac -d "./build" -cp "./lib/*;./lib/ejml-v0.42-libs/*" -sourcepath "./src" "@$argFile"
 
 # Copy libraries to build directory
 Copy-Item -Path lib\* -Destination build -Recurse
