@@ -1,0 +1,34 @@
+FROM nvidia/cuda:12.4.1-runtime-ubuntu20.04
+
+# install ubuntu dependencies
+ENV DEBIAN_FRONTEND=noninteractive 
+RUN apt-get update && \
+    apt-get -y install python3-pip xvfb ffmpeg git build-essential python-opengl
+RUN apt-get update && apt-get install -y git
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
+# install microrts dependencies
+RUN apt-get -y -q install wget unzip default-jdk
+
+# install python dependencies
+RUN curl -sSL https://install.python-poetry.org | python3 -
+COPY pyproject.toml pyproject.toml
+COPY poetry.lock poetry.lock
+
+
+# copy local files
+COPY .gitmodules /app/.gitmodules
+COPY ./gym_microrts /gym_microrts
+COPY ./experiments /experiments
+RUN poetry source add --priority explicit pytorch-cu124 https://download.pytorch.org/whl/cu124
+RUN poetry add --source pytorch_cu124 torch torchvision
+RUN poetry self add poetry-plugin-shell
+RUN poetry install
+RUN git submodule update --init --recursive --remote
+# COPY build.sh build.sh
+# RUN bash build.sh
+
+COPY entrypoint.sh /usr/local/bin/
+RUN chmod 777 /usr/local/bin/entrypoint.sh
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
