@@ -524,7 +524,7 @@ USE_MCTS = False
 if __name__ == "__main__":
     #test_conv()
     env_num = 5
-    pop = 40
+    pop = 100
     max_gen = 300
     elitism = 0.1
     if not USE_MCTS:
@@ -563,7 +563,7 @@ if __name__ == "__main__":
 
     ssvd = SSVDVariable(input_w, input_h, actionSpace, [2,2])
     #run_test_ga(ssvd, envs, 10, 100, 300, device, name="GA_100_10%", elitism=0.1)
-    run_test_ga(ssvd, envs, env_num, pop, max_gen, device, fitness_f, name=f"GA_{env_num}_{pop}_{elitism * 100}%", elitism=0.1)
+    run_test_ga(ssvd, envs, env_num, pop, max_gen, device, fitness_f, name=f"GA_{env_num}_{pop}_{int(elitism * 100)}%", elitism=0.1)
     #run_test_es(ssvd, envs, 10, 50, 300, device)
 
 if __name__ == "__main__1":
