@@ -3,8 +3,8 @@ FROM nvidia/cuda:12.6.0-runtime-ubuntu22.04
 # install ubuntu dependencies
 ENV DEBIAN_FRONTEND=noninteractive 
 RUN apt-get update
-RUN apt-get -y install curl python3-pip xvfb ffmpeg git build-essential python3-opengl
-RUN apt-get update && apt-get install -y git
+RUN apt-get -y install curl python3-pip xvfb ffmpeg build-essential python3-opengl
+RUN apt-get update && apt-get install -y
 RUN ln -s /usr/bin/python3 /usr/bin/python
 RUN which python
 RUN which python3
@@ -24,7 +24,6 @@ COPY poetry.lock poetry.lock
 
 
 # copy local files
-COPY .gitmodules /app/.gitmodules
 COPY ./gym_microrts /gym_microrts
 COPY ./experiments /experiments
 RUN poetry source add --priority explicit pytorch_cu126 https://download.pytorch.org/whl/cu126
@@ -41,8 +40,6 @@ RUN set -eux; \
     for i in 1 2 3 4 5; do \
         timeout 180s poetry install && break || sleep 5; \
     done
-
-RUN git submodule update --init --recursive --remote
 # COPY build.sh build.sh
 # RUN bash build.sh
 
