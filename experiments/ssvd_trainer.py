@@ -204,6 +204,8 @@ def softmax(x, axis=None):
     y = np.exp(x)
     return y / y.sum(axis=axis, keepdims=True)
 
+#TODO let this spawn multiple environments at the same time. The microrts client already supports it.
+#need to revert some of the work I did on the java side because I might have broken it.
 def start_game(envs, weights1, weights2, weightsO, seed, device="cpu", maxstep=10000):
     obs = envs.reset()
     reward_sum = 0
@@ -213,7 +215,9 @@ def start_game(envs, weights1, weights2, weightsO, seed, device="cpu", maxstep=1
                 envs.render(mode="rgb_array")
             else:
                 envs.render()
+        # to process multiple processes at the same time, dont squeeze. just calculate individually
         inputTensor = torch.from_numpy(obs).to(device).float().squeeze()
+
         feature_sizes = [5, 5, 3, 8, 6, 2]
         # Extract and process each feature
         p = 0
@@ -243,6 +247,8 @@ def start_game(envs, weights1, weights2, weightsO, seed, device="cpu", maxstep=1
         # Concatenate slices of outputTensor
         action = outputTensor.to("cpu").detach().numpy()
         # doing the following could result in invalid actions
+
+        # to run multiple environments, wrap this in array and combine with other actions
         # action = np.array([envs.action_space.sample()])
         obs, reward, done, info = envs.step(action)
         #print(done)

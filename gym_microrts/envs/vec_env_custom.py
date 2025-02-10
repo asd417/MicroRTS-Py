@@ -116,6 +116,7 @@ class MicroRTSGridModeVecEnv:
             jars = [
                 "microrts.jar",
                 "lib/bots/Coac.jar",
+                "lib/ejml-v.042-libs/ejml-core-0.42.jar",
                 #"lib/bots/Droplet.jar",
                 #"lib/bots/GRojoA3N.jar",
                 #"lib/bots/Izanagi.jar",
@@ -219,6 +220,7 @@ class MicroRTSGridModeVecEnv:
 
     # we will be feeding action into the ai directly
     # unlike the original, we feed in a 2d vector
+    # this should still support multiple environments
     def step_async(self, actions : np.ndarray):
         actions = actions.reshape((self.num_envs, 1, -1))
         actions = actions * 10000
