@@ -30,11 +30,11 @@ COPY ./experiments /experiments
 RUN poetry source add --priority explicit pytorch_cu124 https://download.pytorch.org/whl/cu124
 RUN set -eux; \
     for i in 1 2 3 4 5; do \
-        timeout 180s poetry add --source pytorch_cu126 torch torchvision && break || sleep 5; \
+        timeout 600s poetry add --source pytorch_cu126 torch torchvision && break || sleep 5; \
     done
 RUN set -eux; \
     for i in 1 2 3 4 5; do \
-        timeout 180s poetry self add poetry-plugin-shell && break || sleep 5; \
+        timeout 120s poetry self add poetry-plugin-shell && break || sleep 5; \
     done
 RUN set -eux; \
     for i in 1 2 3 4 5; do \
