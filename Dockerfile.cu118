@@ -42,7 +42,10 @@ RUN set -eux; \
 # COPY build.sh build.sh
 # RUN bash build.sh
 
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod 777 /usr/local/bin/entrypoint.sh
+COPY ./entrypoint.sh /usr/local/bin/entrypoint.sh
+# Ensure it's executable
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Set the entrypoint
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
