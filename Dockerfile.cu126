@@ -39,7 +39,7 @@ RUN set -eux; \
     done
 RUN set -eux; \
     for i in 1 2 3 4 5; do \
-        timeout 180s RUN poetry install && break || sleep 5; \
+        timeout 180s poetry install && break || sleep 5; \
     done
 
 RUN git submodule update --init --recursive --remote
