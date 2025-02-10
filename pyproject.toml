@@ -20,6 +20,7 @@ spyder = {version = "^5.1.5", optional = true}
 PettingZoo = "^1.16.0"
 tqdm = "^4.67.1"
 stable-baselines3 = "^2.5.0"
+torch = {version = "2.6.0+cu126", source = "torch-cuda126"}
 
 [tool.poetry.dev-dependencies]
 poetry-dynamic-versioning = "^0.13.0"
@@ -30,6 +31,11 @@ stable-baselines3 = "^2.1.0"
 torch = "^2.6.0"
 pytest = "^6.2.5"
 pre-commit = "^2.17.0"
+
+[[tool.poetry.source]]
+name = "torch-cuda126"
+url = "https://download.pytorch.org/whl/cu126"
+priority = "supplemental"
 
 [tool.poetry-dynamic-versioning]
 enable = true

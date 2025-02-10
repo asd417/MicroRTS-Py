@@ -13,7 +13,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from gym.spaces import MultiDiscrete
+from gymnasium.spaces import MultiDiscrete
 from stable_baselines3.common.vec_env import VecEnvWrapper, VecMonitor, VecVideoRecorder
 from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
@@ -420,6 +420,7 @@ if __name__ == "__main__":
             global_step += 1 * args.num_envs
             obs[step] = next_obs
             dones[step] = next_done
+            reward_sum = 0
             # ALGO LOGIC: put action logic here
             with torch.no_grad():
                 invalid_action_masks[step] = torch.tensor(envs.get_action_mask()).to(device)
@@ -431,7 +432,9 @@ if __name__ == "__main__":
             actions[step] = action
             logprobs[step] = logproba
             try:
+# REWARD FROM GAME STEP HERE
                 next_obs, rs, ds, infos = envs.step(action.cpu().numpy().reshape(envs.num_envs, -1))
+                reward_sum += sum(rs)
                 next_obs = torch.Tensor(next_obs).to(device)
             except Exception as e:
                 e.printStackTrace()
