@@ -116,7 +116,12 @@ class MicroRTSGridModeVecEnv:
             jars = [
                 "microrts.jar",
                 "lib/bots/Coac.jar",
-                "lib/ejml-v.042-libs/ejml-core-0.42.jar",
+                "lib/ejml-v0.42-libs/ejml-core-0.42.jar",
+                "lib/ejml-v0.42-libs/ejml-simple-0.42.jar",
+                "lib/ejml-v0.42-libs/ejml-fdense-0.42.jar",
+                "lib/ejml-v0.42-libs/ejml-ddense-0.42.jar",
+                "lib/ejml-v0.42-libs/ejml-dsparse-0.42.jar",
+                "lib/ejml-v0.42-libs/ejml-zdense-0.42.jar",
                 #"lib/bots/Droplet.jar",
                 #"lib/bots/GRojoA3N.jar",
                 #"lib/bots/Izanagi.jar",
@@ -223,6 +228,7 @@ class MicroRTSGridModeVecEnv:
     # this should still support multiple environments
     def step_async(self, actions : np.ndarray):
         actions = actions.reshape((self.num_envs, 1, -1))
+        #print(f"shape of batch action: {actions.shape}")
         actions = actions * 10000
         actions = actions.astype(int)
         self.actions = JArray(JArray(JArray(JInt)))(actions) 

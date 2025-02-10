@@ -3,7 +3,7 @@ cd gym_microrts/microrts
 
 rm -rf build microrts.jar
 mkdir build
-javac -d "./build" -cp "./lib/*" -sourcepath "./src"  $(find ./src/* | grep .java)
+javac -d "./build" -cp "./lib/*:./lib/ejml-v0.42-libs/*" -sourcepath "./src"  $(find ./src/* | grep .java)
 cp -a lib/. build/
 
 # hack to remove the weka dependency in build time

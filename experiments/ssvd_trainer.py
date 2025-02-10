@@ -4,7 +4,7 @@ import math
 import tqdm
 import torch # with cuda
 import torch.jit
-
+import torch.nn as nn
 import statistics
 
 import numpy as np
@@ -157,17 +157,18 @@ class SSVD:
 def evaluateSSVD_simple(weights1,weightsO,input : torch.Tensor) -> torch.Tensor:
     input = input.float() # ensure that the input is floating point tensor
     U, S, Vh = torch.linalg.svd(input)
+    
     Sigma = torch.zeros(input.shape, device=input.device)
     Sigma[:, :S.size(0)] = torch.diag(S)
     # Apply QR decomposition to stabilize U and Vh
     U_stable, _ = torch.linalg.qr(U)  # QR decomposition of U
     Vh_stable, _ = torch.linalg.qr(Vh.T)  # QR decomposition of Vh.T, then transpose back
-    #print(f"{input.shape} at {input.device}")
-    #print(f"{U_stable.shape} at {U_stable.device}")
-    #print(f"{weights1.shape} at {weights1.device}")
-    #print(f"{Sigma.shape} at {Sigma.device}")
-    #print(f"{Vh_stable.shape} at {Vh_stable.device}")
-    #print(f"{weightsO.shape} at {weightsO.device}")
+    print(f"{input.shape} at {input.device}")
+    print(f"{U_stable.shape} at {U_stable.device}")
+    print(f"{weights1.shape} at {weights1.device}")
+    print(f"{Sigma.shape} at {Sigma.device}")
+    print(f"{Vh_stable.shape} at {Vh_stable.device}")
+    print(f"{weightsO.shape} at {weightsO.device}")
 
     #outputTensor = weightsO @ (Vh_stable @ Sigma @ weights1 @ U_stable).flatten()
     outputTensor = weightsO @ (U_stable @ weights1 @ Sigma @ Vh_stable).flatten()
@@ -181,6 +182,7 @@ def evaluateSSVD(weights1,weights2,weightsO,input : torch.Tensor) -> torch.Tenso
     # Apply QR decomposition to stabilize U and Vh
     U_stable, _ = torch.linalg.qr(U)  # QR decomposition of U
     Vh_stable, _ = torch.linalg.qr(Vh.T)  # QR decomposition of Vh.T, then transpose back
+    #print("-------")
     #print(f"{input.shape} at {input.device}")
     #print(f"{U_stable.shape} at {U_stable.device}")
     #print(f"{weights1.shape} at {weights1.device}")
@@ -204,70 +206,103 @@ def softmax(x, axis=None):
     y = np.exp(x)
     return y / y.sum(axis=axis, keepdims=True)
 
+
+class SSVDModel(nn.Module):
+    def __init__(self, envs, device="cpu"):
+        super(SSVDModel, self).__init__()
+        self.envs = envs
+        self.feature_sizes = [5, 5, 3, 8, 6, 2]
+        
+        # Define convolution layers
+        self.conv1 = nn.Conv3d(1, 1, (1, 1, 4), stride=(1, 1, 2), padding=(0, 0, 2), device=device)
+        self.conv2 = nn.Conv3d(1, 1, (1, 1, 2), stride=(1, 1, 1), padding=(0, 0, 0), device=device)
+
+    def forward(self, obs, weights1, weights2, weightsO):
+        inputTensorMulti = torch.from_numpy(obs).float()
+        batch_size = self.envs.num_envs
+        device = inputTensorMulti.device
+        H, W, D = inputTensorMulti.shape[1:]  # Get spatial dimensions
+
+        # Step 1: Extract Features for All Environments at Once
+        feature_tensors = []
+        p = 0
+        
+        assert D == sum(self.feature_sizes), "Depth should be equal to the sum of all feature planes"
+        for size in self.feature_sizes:
+            feature = inputTensorMulti[:, :, :, p:p + size]  # Extract along the last dimension
+            #print(f"shape: {feature.shape}")
+            weights = torch.arange(size, device=device).reshape(1, 1, 1, size)
+            #print(f"shape: {weights}")
+            f = (feature * weights).sum(dim=3, keepdim=True)
+            #print(f"shapef: {f.shape}")
+            feature_tensors.append(f)  # Sum along feature axis
+            #print(f)
+            p += size
+        
+        
+        # Step 2: Stack extracted features into a 5D tensor (batch, channels=1, depth=1, height=H, width=W)
+        inputTensor = torch.cat(feature_tensors, dim=3) # Shape: (batch, H, W, D_n)
+        s1 = inputTensor.shape
+        inputTensor = inputTensor.unsqueeze(1) # Shape: (batch, 1, H, W, D_n)
+        
+        # Step 3: Pass through convolutions
+        it = self.conv1(inputTensor)
+        it = self.conv1(it)
+        it = self.conv1(it)
+        it = self.conv2(it)
+        s2 = it.shape
+        # Step 4: Squeeze the depth dimension (since it's 1)
+        it = it.squeeze(-1)  # Shape: (batch, H, W)
+        
+        s3 = it.shape
+        # Step 5: Process each environment separately through evaluateSSVD
+        actions = []
+        for i in range(batch_size):
+            s4 = it[i][1:].shape # next line squeezes it
+            outputTensor = evaluateSSVD(weights1, weights2, weightsO, it[i].squeeze(0))  # Process each separately
+            #outputTensor[outputTensor < 0] = 0.00001
+            actions.append(outputTensor.unsqueeze(0))  # Keep batch dimension
+        out = torch.cat(actions, dim=0)
+        #print(f"from {s1} to {s2} to {s3} to {s4} to {out.shape}")
+        # Step 6: Concatenate the actions into a final output tensor
+        return out # Shape: (batch, output_size)
+
 #TODO let this spawn multiple environments at the same time. The microrts client already supports it.
 #need to revert some of the work I did on the java side because I might have broken it.
-def start_game(envs, weights1, weights2, weightsO, seed, device="cpu", maxstep=10000):
+def start_game(envs, weights1, weights2, weightsO, maxstep=10000):
     obs = envs.reset()
     reward_sum = 0
+    donecount = 0
     for i in range(maxstep):
         if RENDER:
             if RECORD:
                 envs.render(mode="rgb_array")
             else:
                 envs.render()
-        # to process multiple processes at the same time, dont squeeze. just calculate individually
-        inputTensor = torch.from_numpy(obs).to(device).float().squeeze()
-
-        feature_sizes = [5, 5, 3, 8, 6, 2]
-        # Extract and process each feature
-        p = 0
-        features = []
-        for size in feature_sizes:
-            feature = inputTensor[:, :, p:p + size]
-            weights = torch.arange(size, device=inputTensor.device).reshape(1, 1, size)
-            features.append((feature * weights).sum(dim=2, keepdim=True))
-            p += size
-
-        # Concatenate processed features
-        inputTensor = torch.cat(features, dim=2).unsqueeze(0).unsqueeze(0)
-        #print(inputTensor.shape)
-        m = torch.nn.Conv3d(1, 1, (1, 1, 4), stride=(1, 1, 2), padding=(0, 0, 2))
-        m.to(inputTensor.device)
-        it : torch.Tensor = m(inputTensor)
-        it = m(it)
-        it = m(it)
-        m = torch.nn.Conv3d(1, 1, (1, 1, 2), stride=(1, 1, 1), padding=(0, 0, 0))
-        m.to(inputTensor.device)
-        it = m(it)
-        it = it.squeeze()
-        outputTensor = evaluateSSVD(weights1,weights2,weightsO,it)
-        del inputTensor
-        # sample valid actions
-        num_unit_type = 6
-        # Concatenate slices of outputTensor
-        action = outputTensor.to("cpu").detach().numpy()
-        # doing the following could result in invalid actions
-
-        # to run multiple environments, wrap this in array and combine with other actions
-        # action = np.array([envs.action_space.sample()])
-        obs, reward, done, info = envs.step(action)
-        #print(done)
-        #print(reward)
+        model = SSVDModel(envs, weights1.device)
+        action = model(obs, weights1, weights2, weightsO)
+        obs, reward, done, info = envs.step(action.to("cpu").detach().numpy())
+        #print(f"done {done}" )
+        #print(f"reward {reward}" )
         reward_sum += sum(reward)
         if done.any():
+            donecount += 1
+        if donecount >= envs.num_envs:
             return reward_sum
     return reward_sum
 
-def fitness(envs, chromosome, ssvd, device, trials=10):
+def fitness(envs, chromosome, ssvd, device, trials=1):
     # chromosome is a 1D vector
+    if(trials != envs.num_envs):
+        print(f"Trial count is {envs.num_envs} not {trials}")
     weights1, weights2, weightsO = ssvd.chromosome_to_weights(chromosome)
-    fits = [start_game(envs, weights1, weights2, weightsO, x, device=device) for x in range(trials)]
+    fits = start_game(envs, weights1, weights2, weightsO)
     del weights1
     del weights2
     del weightsO
-    return (sum(fits) + 10 * trials)/float(trials)
+    return (fits + 10 * envs.num_envs)/float(envs.num_envs)
 
-def start_game_mcts(envs, chromosome, device="cpu", maxstep=10000):
+def start_game_mcts(envs, chromosome, maxstep=10000):
     envs.reset(chromosome)
     reward_sum = 0
     for i in range(maxstep):
@@ -284,7 +319,7 @@ def start_game_mcts(envs, chromosome, device="cpu", maxstep=10000):
 
 def fitness_mcts(envs, chromosome, ssvd, device, trials=10):
     # chromosome is a 1D vector
-    fits = [start_game_mcts(envs, chromosome, device=device) for x in range(trials)]
+    fits = [start_game_mcts(envs, chromosome) for x in range(trials)]
     return sum(fits) + 10
 
 def load_files(pt_file, txt_file):
@@ -344,7 +379,7 @@ def test_conv():
 def save_pop(p, name="population"):
     torch.save(p, name+'.pt')
 
-def load_or_create_pop(size, name="population"):
+def load_or_create_pop(size, name="population", device='cpu'):
     p, logfile = load_files(name+".pt", name+"_log.txt")
     gi = 1
     if p is None:
@@ -371,7 +406,7 @@ def run_test_es(ssvd, envs, trials, pop_size, max_iter, device, fitness_func, na
     test_name = name + "-population"
     sigma = 0.1    # noise standard deviation
     alpha = 0.001  # learning rate
-    gen_start, w = load_or_create_pop(1, name=test_name)
+    gen_start, w = load_or_create_pop(1, name=test_name, device=device)
     writer = get_logger(name)
     
     for i in range(gen_start, max_iter):
@@ -489,12 +524,13 @@ USE_MCTS = False
 if __name__ == "__main__":
     #test_conv()
     if not USE_MCTS:
+        env_num = 5
         envs = MicroRTSGridModeVecEnv(
             num_selfplay_envs=0,
-            num_bot_envs=1,
+            num_bot_envs=env_num,
             max_steps=2000,
             render_theme=2,
-            ai2s=[microrts_ai.coacAI for _ in range(1)],
+            ai2s=[microrts_ai.coacAI for _ in range(env_num)],
             map_paths=["maps/16x16/basesWorkers16x16.xml"],
             reward_weight=np.array([10.0, 1.0, 1.0, 0.2, 1.0, 4.0]),
         )
