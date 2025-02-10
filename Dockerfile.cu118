@@ -12,8 +12,8 @@ RUN apt-get -y -q install wget unzip default-jdk
 
 # install python dependencies
 RUN curl -sSL https://install.python-poetry.org | python3 -
-RUN which poetry
 RUN ln -s /root/.local/bin/poetry /usr/local/bin/poetry
+RUN which poetry
 
 # Ensure Poetry is in PATH
 ENV PATH="/root/.local/bin:$PATH"
