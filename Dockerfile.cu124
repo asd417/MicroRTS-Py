@@ -6,7 +6,8 @@ RUN apt-get update
 RUN apt-get -y install python3-pip xvfb ffmpeg git build-essential python3-opengl
 RUN apt-get update && apt-get install -y git
 RUN ln -s /usr/bin/python3 /usr/bin/python
-
+RUN which python
+RUN which python3
 # install microrts dependencies
 RUN apt-get -y -q install wget unzip default-jdk
 
