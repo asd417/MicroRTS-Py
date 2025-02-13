@@ -269,10 +269,14 @@ class SSVDModel(nn.Module):
 
 #TODO let this spawn multiple environments at the same time. The microrts client already supports it.
 #need to revert some of the work I did on the java side because I might have broken it.
-def start_game(envs, weights1, weights2, weightsO, maxstep=10000):
+def start_game(envs, weights1, weights2, weightsO, maxstep=2000):
     obs = envs.reset()
     reward_sum = 0
     donecount = 0
+    prev_r = None
+    prev_d = None
+    scores = np.zeros((envs.num_envs,))
+    dones = np.ones((envs.num_envs,))
     for i in range(maxstep):
         if RENDER:
             if RECORD:
@@ -282,27 +286,31 @@ def start_game(envs, weights1, weights2, weightsO, maxstep=10000):
         model = SSVDModel(envs, weights1.device)
         action = model(obs, weights1, weights2, weightsO)
         obs, reward, done, info = envs.step(action.to("cpu").detach().numpy())
-        #print(f"done {done}" )
-        #print(f"reward {reward}" )
-        reward_sum += sum(reward)
-        if done.any():
-            donecount += 1
-        if donecount >= envs.num_envs:
-            return reward_sum
-    return reward_sum
+        
+        dones -= done.astype(int)
+        dones = np.clip(dones, 0, None)
+        scores += dones * reward
+        if prev_r != str(scores) or prev_d != str(dones):
+            #print(f"{scores} \t {dones}")
+            prev_r = str(scores)
+            prev_d = str(dones)
+        if np.all(dones == 0):
+            break
+    return sum(scores) / float(envs.num_envs)
 
 def fitness(envs, chromosome, ssvd, device, trials=1):
     # chromosome is a 1D vector
     if(trials != envs.num_envs):
         print(f"Trial count is {envs.num_envs} not {trials}")
     weights1, weights2, weightsO = ssvd.chromosome_to_weights(chromosome)
-    fits = start_game(envs, weights1, weights2, weightsO)
+    maxstep = 3000
+    fit = start_game(envs, weights1, weights2, weightsO, maxstep=maxstep) # in total plays maxstep * envs.num_envs
     del weights1
     del weights2
     del weightsO
-    return (fits + 10 * envs.num_envs)/float(envs.num_envs)
+    return fit # calculates average per-step score
 
-def start_game_mcts(envs, chromosome, maxstep=10000):
+def start_game_mcts(envs, chromosome, maxstep=3000):
     envs.reset(chromosome)
     reward_sum = 0
     for i in range(maxstep):
@@ -524,7 +532,7 @@ USE_MCTS = False
 if __name__ == "__main__":
     #test_conv()
     env_num = 5
-    pop = 100
+    pop = 40
     max_gen = 300
     elitism = 0.1
     if not USE_MCTS:
@@ -552,8 +560,8 @@ if __name__ == "__main__":
     if RECORD:
         envs = VecVideoRecorder(envs, "videos", record_video_trigger=lambda x: x % 4000 == 0, video_length=2000)
 
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    #device = 'cpu'
+    #device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = 'cpu'
     input_h = envs.height
     input_w = envs.width
     actionSpace = envs.height * envs.width + 6 # board + unit type count
@@ -563,8 +571,8 @@ if __name__ == "__main__":
 
     ssvd = SSVDVariable(input_w, input_h, actionSpace, [2,2])
     #run_test_ga(ssvd, envs, 10, 100, 300, device, name="GA_100_10%", elitism=0.1)
-    run_test_ga(ssvd, envs, env_num, pop, max_gen, device, fitness_f, name=f"GA_{env_num}_{pop}_{int(elitism * 100)}%", elitism=0.1)
-    #run_test_es(ssvd, envs, 10, 50, 300, device)
+    #run_test_ga(ssvd, envs, env_num, pop, max_gen, device, fitness_f, name=f"GA_{env_num}_{pop}_{int(elitism * 100)}%", elitism=0.1)
+    run_test_es(ssvd, envs, env_num, pop, max_gen, device, fitness_f, name=f"OpenAIES_{env_num}_{pop}_{int(elitism * 100)}%")
 
 if __name__ == "__main__1":
     # writer = get_logger("test")
@@ -589,12 +597,15 @@ if __name__ == "__main__1":
     U, S, Vh = torch.linalg.svd(t1)
     Sigma = torch.zeros(t1.shape)
     Sigma[:, :S.size(0)] = torch.diag(S)
+    # print(ssvd.get_chromosome_size())
+    # print(U.shape)
+    # print(w1.shape)
+    # print(Sigma.shape)
+    # print(w2.shape)
+    # print(Vh.shape)
+    # print(w3.shape)
+    # result = evaluateSSVD(w1, w2, w3, t1)
+    # print(result.shape)
+    
+    ssvd = SSVDVariable(16, 16, 16*16+6, [1,1])
     print(ssvd.get_chromosome_size())
-    print(U.shape)
-    print(w1.shape)
-    print(Sigma.shape)
-    print(w2.shape)
-    print(Vh.shape)
-    print(w3.shape)
-    result = evaluateSSVD(w1, w2, w3, t1)
-    print(result.shape)

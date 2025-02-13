@@ -229,7 +229,8 @@ class MicroRTSGridModeVecEnv:
     def step_async(self, actions : np.ndarray):
         actions = actions.reshape((self.num_envs, 1, -1))
         #print(f"shape of batch action: {actions.shape}")
-        actions = actions * 10000
+        actions = actions * 10000 # when passing to java, the array needs to be int array thus this workaround
+        # the java side will divide by the same value to get the float value
         actions = actions.astype(int)
         self.actions = JArray(JArray(JArray(JInt)))(actions) 
 
