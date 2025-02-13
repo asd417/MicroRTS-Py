@@ -19,97 +19,6 @@ from gym_microrts.envs.vec_mcts_env import MicroRTSMCTSEnv
 from torch.utils.tensorboard import SummaryWriter
 import datetime
 
-def create_population(shape, size, device):
-    return torch.stack([torch.randn(shape, device=device) for _ in range(size)])
-
-def roulette_wheel_selection(population, device="cpu"):
-    """
-    Perform roulette wheel selection on a population.
-    
-    Args:
-        population: List of tuples (chromosome, fitness)
-    
-    Returns:
-        Selected chromosome based on fitness proportionate selection.
-    """
-    # Extract fitness values
-    fitness_values = torch.tensor([fitness for _, fitness in population], dtype=torch.float32, device=device)
-    # Handle negative fitness by shifting if needed
-    min_fitness = torch.min(fitness_values)
-    if min_fitness < 0:
-        fitness_values -= min_fitness  # Shift to make all values non-negative
-
-    # Compute selection probabilities
-    total_fitness = torch.sum(fitness_values)
-    if total_fitness == 0:  # Avoid division by zero
-        probabilities = torch.ones_like(fitness_values) / len(fitness_values)
-    else:
-        probabilities = fitness_values / total_fitness  # Normalize fitness
-
-    # Perform roulette wheel selection
-    selected_indices = torch.multinomial(probabilities, 2, replacement=False).tolist()
-    return population[selected_indices[0]][0], population[selected_indices[1]][0]  # Return selected chromosome
-
-def crossover(parent1, parent2):
-    """Performs single-point crossover between two matrices."""
-    rows, _ = parent1.shape
-    crossover_pointr = torch.randint(0, rows, (1,),device=parent1.device).item()  # Choose a row to swap from
-    child = torch.clone(parent1)
-    # Create a child matrix by swapping rows below crossover point
-    child[crossover_pointr:, :] = parent2[crossover_pointr:, :]  # Swap lower part
-    return child
-
-def mutate_multivariate_gaussian(matrix, mutation_rate=0.1):
-    """
-    Applies mutation by adding noise sampled from a multivariate Gaussian distribution.
-    The mean is zero, and the covariance matrix is an identity matrix scaled by a factor.
-    """
-    rows, cols = matrix.shape
-    mutation_mask = torch.rand(rows, cols, device=matrix.device) < mutation_rate  # Decide mutation points
-    
-    # Create a covariance matrix (identity for simplicity)
-    cov_matrix = torch.eye(cols, device=matrix.device) * 0.1  # Scaling factor
-
-    # Sample mutation noise using multivariate Gaussian
-    mean = torch.zeros(cols, device=matrix.device)  # Mean is zero
-    mvn_noise = torch.distributions.MultivariateNormal(mean, cov_matrix)
-    
-    # Apply the mutation only where the mask is True
-    for i in range(rows):
-        if mutation_mask[i].any():  # If any column in row i is mutated
-            noise_sample = mvn_noise.sample()  # Sample once per row
-            matrix[i, mutation_mask[i]] += noise_sample[mutation_mask[i]]  # Apply only where mask is True
-            
-    return matrix
-
-# Used for generating classification dataset. make sure to set the torch.manual_seed
-def matrix_to_vector_custom(matrix: torch.Tensor, m : int, seed : int):
-    """
-    Maps an (n x n) matrix to a unique (m x 1) vector using a deterministic transformation.
-
-    Args:
-        matrix (torch.Tensor): Input tensor of shape (n, n).
-        m (int): Desired output dimension (must be <= n*n for uniqueness).
-
-    Returns:
-        torch.Tensor: Transformed vector of shape (m, 1).
-    """
-    n = matrix.shape[0]
-    if matrix.shape[0] != matrix.shape[1]:
-        raise ValueError("Input matrix must be square (n x n).")
-    if m > n * n:
-        raise ValueError(f"m must be <= {n*n} to maintain uniqueness.")
-
-    # Flatten the matrix to shape (n*n, 1)
-    vector = matrix.view(n * n, 1)
-    # make deterministic
-    torch.manual_seed(seed)
-    # Create a fixed transformation matrix W of shape (m, n*n)
-    W = torch.randn(m, n * n, device=matrix.device)  # Ensure full rank
-    torch.manual_seed(torch.randint(0, 1000, (1,)).item())
-    # Compute transformed vector
-    transformed_vector = W @ vector
-    return transformed_vector
 
 class SSVDVariable:
     def __init__(self, input_w, input_h, outputSize, structure, k='full'):
@@ -136,76 +45,6 @@ class SSVDVariable:
         weightO = chromosome[self.pre_s_tensors * min(self.inputSizeH,self.inputSizeW)**2 + self.post_s_tensors * max(self.inputSizeH,self.inputSizeW)**2 : 
                              ].view(self.outputSize, self.inputSizeW * self.inputSizeH)
         return weights_1, weights_2, weightO
-
-class SSVD:
-    def __init__(self, input_w, input_h, outputSize, k='full'):
-        self.inputSizeW = input_w
-        self.inputSizeH = input_h
-        self.outputSize = outputSize
-
-    def get_chromosome_size(self):
-        return min(self.inputSizeH,self.inputSizeW)**2 + self.outputSize * self.inputSizeW * self.inputSizeH
-        
-    def chromosome_to_weights(self, chromosome : torch.Tensor):
-        expected_size = self.get_chromosome_size()
-        if chromosome.shape[0] != expected_size:
-            raise ValueError(f"Vector size must be {expected_size}, but got {chromosome.shape[0]}.")
-        weights1 = chromosome[: min(self.inputSizeH,self.inputSizeW)**2].view(min(self.inputSizeH,self.inputSizeW), min(self.inputSizeH,self.inputSizeW))      # First matrix (n x n)
-        weightsO = chromosome[min(self.inputSizeH,self.inputSizeW)**2:].view(self.outputSize, self.inputSizeW * self.inputSizeH)   # Second matrix (m x n^2)
-        return weights1, weightsO
-    
-def evaluateSSVD_simple(weights1,weightsO,input : torch.Tensor) -> torch.Tensor:
-    input = input.float() # ensure that the input is floating point tensor
-    U, S, Vh = torch.linalg.svd(input)
-    
-    Sigma = torch.zeros(input.shape, device=input.device)
-    Sigma[:, :S.size(0)] = torch.diag(S)
-    # Apply QR decomposition to stabilize U and Vh
-    U_stable, _ = torch.linalg.qr(U)  # QR decomposition of U
-    Vh_stable, _ = torch.linalg.qr(Vh.T)  # QR decomposition of Vh.T, then transpose back
-    print(f"{input.shape} at {input.device}")
-    print(f"{U_stable.shape} at {U_stable.device}")
-    print(f"{weights1.shape} at {weights1.device}")
-    print(f"{Sigma.shape} at {Sigma.device}")
-    print(f"{Vh_stable.shape} at {Vh_stable.device}")
-    print(f"{weightsO.shape} at {weightsO.device}")
-
-    #outputTensor = weightsO @ (Vh_stable @ Sigma @ weights1 @ U_stable).flatten()
-    outputTensor = weightsO @ (U_stable @ weights1 @ Sigma @ Vh_stable).flatten()
-    return outputTensor
-
-def evaluateSSVD(weights1,weights2,weightsO,input : torch.Tensor) -> torch.Tensor:
-    input = input.float() # ensure that the input is floating point tensor
-    U, S, Vh = torch.linalg.svd(input)
-    Sigma = torch.zeros(input.shape, device=input.device)
-    Sigma[:, :S.size(0)] = torch.diag(S)
-    # Apply QR decomposition to stabilize U and Vh
-    U_stable, _ = torch.linalg.qr(U)  # QR decomposition of U
-    Vh_stable, _ = torch.linalg.qr(Vh.T)  # QR decomposition of Vh.T, then transpose back
-    #print("-------")
-    #print(f"{input.shape} at {input.device}")
-    #print(f"{U_stable.shape} at {U_stable.device}")
-    #print(f"{weights1.shape} at {weights1.device}")
-    #print(f"{Sigma.shape} at {Sigma.device}")
-    #print(f"{Vh_stable.shape} at {Vh_stable.device}")
-    #print(f"{weightsO.shape} at {weightsO.device}")
-
-    result = torch.nn.functional.relu(U_stable @ weights1[0])
-    for i in range(1, weights1.shape[0]):
-        result = torch.nn.functional.relu(result @ weights1[i])  # ReLU after each step
-    result = torch.nn.functional.relu(result @ Sigma)
-    for i in range(1, weights2.shape[0]):
-        result = torch.nn.functional.relu(result @ weights2[i])  # ReLU after each step
-    result = weightsO @ (result @ Vh_stable).flatten()
-
-    #outputTensor = weightsO @ (U_stable @ weights1 @ Sigma @ Vh_stable).flatten()
-    return result
-
-def softmax(x, axis=None):
-    x = x - x.max(axis=axis, keepdims=True)
-    y = np.exp(x)
-    return y / y.sum(axis=axis, keepdims=True)
-
 
 class SSVDModel(nn.Module):
     def __init__(self, envs, device="cpu"):
@@ -266,13 +105,175 @@ class SSVDModel(nn.Module):
         #print(f"from {s1} to {s2} to {s3} to {s4} to {out.shape}")
         # Step 6: Concatenate the actions into a final output tensor
         return out # Shape: (batch, output_size)
+    
+def create_population(shape, size, device):
+    return torch.stack([torch.randn(shape, device=device) for _ in range(size)])
+
+def roulette_wheel_selection(population, device="cpu"):
+    """
+    Perform roulette wheel selection on a population.
+    
+    Args:
+        population: List of tuples (chromosome, fitness)
+    
+    Returns:
+        Selected chromosome based on fitness proportionate selection.
+    """
+    # Extract fitness values
+    fitness_values = torch.tensor([fitness for _, fitness in population], dtype=torch.float32, device=device)
+    # Handle negative fitness by shifting if needed
+    min_fitness = torch.min(fitness_values)
+    if min_fitness < 0:
+        fitness_values -= min_fitness  # Shift to make all values non-negative
+
+    # Compute selection probabilities
+    total_fitness = torch.sum(fitness_values)
+    if total_fitness == 0:  # Avoid division by zero
+        probabilities = torch.ones_like(fitness_values) / len(fitness_values)
+    else:
+        probabilities = fitness_values / total_fitness  # Normalize fitness
+
+    # Perform roulette wheel selection
+    selected_indices = torch.multinomial(probabilities, 2, replacement=False).tolist()
+    return population[selected_indices[0]][0], population[selected_indices[1]][0]  # Return selected chromosome
+
+def crossover_matrix(parent1 : torch.Tensor, parent2 : torch.Tensor):
+    assert str(parent1.shape) == str(parent2.shape), f"Can not crossover two matrices with different shapes: {parent1.shape} {parent2.shape}"
+    assert not (parent1.shape[0] == 1 and parent2.shape[0] == 1), f"Can not crossover two matrices with size 1x1"
+    # example of crossing over two matrices with shape (3,2)
+
+    # maxsel = 3 - 1 + 2 - 1 = 3
+    # places: 1 2 3 (because crossover at position 0 does nothing)
+    
+    # randint = 3
+    # 3 > (3-1) -> crossover col
+    # 3 - (3-1) = 3 - 2 = 1
+    # crossover col at position 1
+
+    # if randint = 2
+    # 2 <= (3-1) -> crossover row
+    # crossover col at position 2
+    maxsel = parent1.shape[0] - 1 + parent1.shape[1] - 1
+    random_int = torch.randint(1, maxsel+1, (1,))
+    if random_int > parent1.shape[0]-1: # crossover col
+        random_int -= (parent1.shape[0]-1)
+        child = torch.cat((parent1[:, :random_int], parent2[:, random_int:]), dim=1)
+    else:
+         # crossover row
+        child = torch.cat((parent1[:random_int, :], parent2[random_int:, :]), dim=0)
+    return child
+
+def crossover(parent1, parent2):
+    """Performs single-point crossover between two matrices."""
+    rows, _ = parent1.shape
+    crossover_pointr = torch.randint(0, rows, (1,),device=parent1.device).item()  # Choose a row to swap from
+    child = torch.clone(parent1)
+    # Create a child matrix by swapping rows below crossover point
+    child[crossover_pointr:, :] = parent2[crossover_pointr:, :]  # Swap lower part
+    return child
+
+def crossover_gam(parent1, parent2, ssvd : SSVDVariable):
+    """Performs single-point crossover between two matrices."""
+    p1w1s, p1w2s, p1wO = ssvd.chromosome_to_weights(parent1)
+    p2w1s, p2w2s, p2wO = ssvd.chromosome_to_weights(parent2)
+    pow1s = torch.cat([crossover_matrix(p1w1, p2w1) for p1w1, p2w1 in zip(p1w1s, p2w1s)])
+    pow2s = torch.cat([crossover_matrix(p1w2, p2w2) for p1w2, p2w2 in zip(p1w2s, p2w2s)])
+    powO = crossover_matrix(p1wO,p2wO)
+    return torch.cat((pow1s, pow2s, powO)).flatten()
+
+
+def mutate_multivariate_gaussian(matrix, mutation_rate=0.1):
+    """
+    Applies mutation by adding noise sampled from a multivariate Gaussian distribution.
+    The mean is zero, and the covariance matrix is an identity matrix scaled by a factor.
+    """
+    rows, cols = matrix.shape
+    mutation_mask = torch.rand(rows, cols, device=matrix.device) < mutation_rate  # Decide mutation points
+    
+    # Create a covariance matrix (identity for simplicity)
+    cov_matrix = torch.eye(cols, device=matrix.device) * 0.1  # Scaling factor
+
+    # Sample mutation noise using multivariate Gaussian
+    mean = torch.zeros(cols, device=matrix.device)  # Mean is zero
+    mvn_noise = torch.distributions.MultivariateNormal(mean, cov_matrix)
+    
+    # Apply the mutation only where the mask is True
+    for i in range(rows):
+        if mutation_mask[i].any():  # If any column in row i is mutated
+            noise_sample = mvn_noise.sample()  # Sample once per row
+            matrix[i, mutation_mask[i]] += noise_sample[mutation_mask[i]]  # Apply only where mask is True
+            
+    return matrix
+
+# Used for generating classification dataset. make sure to set the torch.manual_seed
+def matrix_to_vector_custom(matrix: torch.Tensor, m : int, seed : int):
+    """
+    Maps an (n x n) matrix to a unique (m x 1) vector using a deterministic transformation.
+
+    Args:
+        matrix (torch.Tensor): Input tensor of shape (n, n).
+        m (int): Desired output dimension (must be <= n*n for uniqueness).
+
+    Returns:
+        torch.Tensor: Transformed vector of shape (m, 1).
+    """
+    n = matrix.shape[0]
+    if matrix.shape[0] != matrix.shape[1]:
+        raise ValueError("Input matrix must be square (n x n).")
+    if m > n * n:
+        raise ValueError(f"m must be <= {n*n} to maintain uniqueness.")
+
+    # Flatten the matrix to shape (n*n, 1)
+    vector = matrix.view(n * n, 1)
+    # make deterministic
+    torch.manual_seed(seed)
+    # Create a fixed transformation matrix W of shape (m, n*n)
+    W = torch.randn(m, n * n, device=matrix.device)  # Ensure full rank
+    torch.manual_seed(torch.randint(0, 1000, (1,)).item())
+    # Compute transformed vector
+    transformed_vector = W @ vector
+    return transformed_vector
+
+
+def evaluateSSVD(weights1,weights2,weightsO,input : torch.Tensor) -> torch.Tensor:
+    input = input.float() # ensure that the input is floating point tensor
+    U, S, Vh = torch.linalg.svd(input)
+    Sigma = torch.zeros(input.shape, device=input.device)
+    Sigma[:, :S.size(0)] = torch.diag(S)
+    # Apply QR decomposition to stabilize U and Vh
+    U_stable, _ = torch.linalg.qr(U)  # QR decomposition of U
+    Vh_stable, _ = torch.linalg.qr(Vh.T)  # QR decomposition of Vh.T, then transpose back
+    #print("-------")
+    #print(f"{input.shape} at {input.device}")
+    #print(f"{U_stable.shape} at {U_stable.device}")
+    #print(f"{weights1.shape} at {weights1.device}")
+    #print(f"{Sigma.shape} at {Sigma.device}")
+    #print(f"{Vh_stable.shape} at {Vh_stable.device}")
+    #print(f"{weightsO.shape} at {weightsO.device}")
+
+    result = torch.nn.functional.relu(U_stable @ weights1[0])
+    for i in range(1, weights1.shape[0]):
+        result = torch.nn.functional.relu(result @ weights1[i])  # ReLU after each step
+    result = torch.nn.functional.relu(result @ Sigma)
+    for i in range(1, weights2.shape[0]):
+        result = torch.nn.functional.relu(result @ weights2[i])  # ReLU after each step
+    result = weightsO @ (result @ Vh_stable).flatten()
+
+    #outputTensor = weightsO @ (U_stable @ weights1 @ Sigma @ Vh_stable).flatten()
+    return result
+
+def softmax(x, axis=None):
+    x = x - x.max(axis=axis, keepdims=True)
+    y = np.exp(x)
+    return y / y.sum(axis=axis, keepdims=True)
+
+
 
 #TODO let this spawn multiple environments at the same time. The microrts client already supports it.
 #need to revert some of the work I did on the java side because I might have broken it.
-def start_game(envs, weights1, weights2, weightsO, maxstep=2000):
+def fitness(envs, chromosome, ssvd, maxstep = 3000):
+    weights1, weights2, weightsO = ssvd.chromosome_to_weights(chromosome)
     obs = envs.reset()
-    reward_sum = 0
-    donecount = 0
     prev_r = None
     prev_d = None
     scores = np.zeros((envs.num_envs,))
@@ -286,33 +287,26 @@ def start_game(envs, weights1, weights2, weightsO, maxstep=2000):
         model = SSVDModel(envs, weights1.device)
         action = model(obs, weights1, weights2, weightsO)
         obs, reward, done, info = envs.step(action.to("cpu").detach().numpy())
-        
+        # dones is an array of booleans. The element is true if the step ends the game. after that, new game is started immediately.
+        # below ensures that scores are calculated for exactly 1 game per env
         dones -= done.astype(int)
         dones = np.clip(dones, 0, None)
-        scores += dones * reward
+        scores += dones * reward # making sure to only record score from completed games only
         if prev_r != str(scores) or prev_d != str(dones):
             #print(f"{scores} \t {dones}")
             prev_r = str(scores)
             prev_d = str(dones)
         if np.all(dones == 0):
             break
-    return sum(scores) / float(envs.num_envs)
-
-def fitness(envs, chromosome, ssvd, device, trials=1):
-    # chromosome is a 1D vector
-    if(trials != envs.num_envs):
-        print(f"Trial count is {envs.num_envs} not {trials}")
-    weights1, weights2, weightsO = ssvd.chromosome_to_weights(chromosome)
-    maxstep = 3000
-    fit = start_game(envs, weights1, weights2, weightsO, maxstep=maxstep) # in total plays maxstep * envs.num_envs
     del weights1
     del weights2
     del weightsO
-    return fit # calculates average per-step score
+    return sum(scores) / float(envs.num_envs)
 
-def start_game_mcts(envs, chromosome, maxstep=3000):
+def fitness_mcts(envs, chromosome, ssvd, maxstep=3000):
+    # chromosome is a 1D vector
+    # chromosomes are turned into weight matrices on java
     envs.reset(chromosome)
-    reward_sum = 0
     scores = np.zeros((envs.num_envs,))
     dones = np.ones((envs.num_envs,))
     for i in range(maxstep):
@@ -322,11 +316,9 @@ def start_game_mcts(envs, chromosome, maxstep=3000):
             else:
                 envs.render()
         _, reward, done, info = envs.step()
-        reward_sum += sum(reward)
-        
         dones -= done.astype(int)
         dones = np.clip(dones, 0, None)
-        scores += dones * reward
+        scores += dones * reward # making sure to only record score from completed games only
         if prev_r != str(scores) or prev_d != str(dones):
             #print(f"{scores} \t {dones}")
             prev_r = str(scores)
@@ -334,11 +326,6 @@ def start_game_mcts(envs, chromosome, maxstep=3000):
         if np.all(dones == 0):
             break
     return sum(scores) / float(envs.num_envs)
-
-def fitness_mcts(envs, chromosome, ssvd, device, trials=10):
-    # chromosome is a 1D vector
-    fits = [start_game_mcts(envs, chromosome) for x in range(trials)]
-    return sum(fits) + 10
 
 def load_files(pt_file, txt_file):
     # Check if the .pt file exists
@@ -420,7 +407,7 @@ def get_logger(name, directory="runs/") -> SummaryWriter:
     return writer
 
 # openai es
-def run_test_es(ssvd, envs, trials, pop_size, max_iter, device, fitness_func, name="OpenAI-ES"):
+def run_test_es(ssvd, envs, pop_size, max_iter, device, fitness_func, name="OpenAI-ES", maxstep=3000):
     test_name = name + "-population"
     sigma = 0.1    # noise standard deviation
     alpha = 0.001  # learning rate
@@ -436,7 +423,7 @@ def run_test_es(ssvd, envs, trials, pop_size, max_iter, device, fitness_func, na
 
         for j in range(pop_size):
             w_try = w + sigma*N[j]
-            f = fitness_func(envs, w_try, ssvd, device, trials=trials)
+            f = fitness_func(envs, w_try, ssvd, maxstep=maxstep)
             R[j] = f
             writer.add_histogram("Chromosome", w_try, i)
             if f > best_fitness_single_gen:
@@ -464,8 +451,7 @@ def run_test_es(ssvd, envs, trials, pop_size, max_iter, device, fitness_func, na
         w = w.unsqueeze(0).unsqueeze(-1)
         save_pop(w, name=test_name)
 
-
-def run_test_ga(ssvd, envs, trials, pop_size, max_iter, device, fitness_func, name="GA", elitism=0.1):
+def run_test_ga(ssvd, envs, pop_size, max_iter, device, fitness_func, name="GA", elitism=0.1, maxstep=3000):
     test_name = name + "-population"
     writer = get_logger(name)
     gi, p = load_or_create_pop(pop_size, name=test_name)
@@ -482,7 +468,7 @@ def run_test_ga(ssvd, envs, trials, pop_size, max_iter, device, fitness_func, na
         best_fitness_single_gen = 0
         progress = tqdm.tqdm(total=len(p), desc=f"{test_name} Generation {gi}/{max_iter}")
         for chromosome in p:
-            f = fitness_func(envs, chromosome, ssvd, device, trials=trials) 
+            f = fitness_func(envs, chromosome, ssvd, maxstep=maxstep) 
             tqdm.tqdm.write(f"Fitness: {f}")
             writer.add_histogram("Chromosome", chromosome, gi)
             
@@ -536,6 +522,78 @@ def run_test_ga(ssvd, envs, trials, pop_size, max_iter, device, fitness_func, na
         save_pop(p, name=test_name)
     envs.close()
 
+# GA but crossover happens between weights of same shapes
+def run_test_gam(ssvd, envs, pop_size, max_iter, device, fitness_func, name="GA-M", elitism=0.1, maxstep=3000):
+    test_name = name + "-population"
+    writer = get_logger(name)
+    gi, p = load_or_create_pop(pop_size, name=test_name)
+    mutation_rate = 0.5
+
+    best_chromosome = None
+    best_fitness = 0
+    win = False
+    while win == False:
+        if(max_iter < gi):
+            win = True
+            break
+        ev_f = []
+        best_fitness_single_gen = 0
+        progress = tqdm.tqdm(total=len(p), desc=f"{test_name} Generation {gi}/{max_iter}")
+        for chromosome in p:
+            f = fitness_func(envs, chromosome, ssvd, maxstep=maxstep) 
+            tqdm.tqdm.write(f"Fitness: {f}")
+            writer.add_histogram("Chromosome", chromosome, gi)
+            
+            if f > best_fitness_single_gen:
+                best_fitness_single_gen = f
+            if f > best_fitness:
+                best_fitness = f
+                best_chromosome = chromosome
+            if(f >= 1000 * 0.9): # we want 90% accuracy of our model's policy
+                win = True
+            ev_f.append(f)
+            progress.update(1)
+        avg = sum(ev_f) / len(ev_f)
+        std = statistics.stdev(ev_f)
+        writer.add_scalars(f"{name}/Fitness", {
+            "Best Fitness": best_fitness_single_gen,
+            "Average Fitness": avg,
+            "Standard Deviation": std,
+            "Upper Bound": avg + std,
+            "Lower Bound": avg - std
+        }, gi)
+        logstr = f"Generation {gi} {name} Highest: {best_fitness_single_gen} Average: {avg} StDev: {std}"
+        tqdm.tqdm.write(logstr)
+        write_log(logstr, name=test_name)
+        if(not win):
+            ev_p = list(zip(p,ev_f))
+            ev_p_sorted = sorted(ev_p, key=lambda x: x[1], reverse=True) # sort by fitness from highest to lowest
+            elites = int(pop_size * elitism)
+            ev_p_sorted = ev_p_sorted[:elites]
+            new_p = []
+            print("Preparing next generation...")
+            for i in range(pop_size - elites): # GA - Matrix
+                parent1, parent2 = roulette_wheel_selection(ev_p, device)
+                #print("Crossover...")
+                co = crossover_gam(parent1, parent2, ssvd)
+                #print("Mutating...")
+                mutate = mutate_multivariate_gaussian(co, mutation_rate)
+                #print("Done Individual Creation")
+                new_p.append(mutate)
+                
+            p = [tup[0] for tup in ev_p_sorted] + new_p
+            gi += 1
+        else:
+            logstr = f"Training Done | Best Fitness: {best_fitness}"
+            tqdm.tqdm.write(logstr)
+            write_log(logstr, name=test_name)
+            logstr = f"Chromosome: {chromosome}"
+            tqdm.tqdm.write(logstr)
+            write_log(logstr, name=test_name)
+            save_pop(best_chromosome, name=test_name+"_best")
+        save_pop(p, name=test_name)
+    envs.close()
+
 RECORD = False
 RENDER = False
 USE_MCTS = False
@@ -545,11 +603,12 @@ if __name__ == "__main__":
     pop = 40
     max_gen = 300
     elitism = 0.1
+    maxstep = 3000
     if not USE_MCTS:
         envs = MicroRTSGridModeVecEnv(
             num_selfplay_envs=0,
             num_bot_envs=env_num,
-            max_steps=2000,
+            max_steps=maxstep,
             render_theme=2,
             ai2s=[microrts_ai.coacAI for _ in range(env_num)],
             map_paths=["maps/16x16/basesWorkers16x16.xml"],
@@ -559,10 +618,10 @@ if __name__ == "__main__":
     else:
         envs = MicroRTSMCTSEnv(
             num_selfplay_envs=0,
-            num_bot_envs=1,
-            max_steps=2000,
+            num_bot_envs=env_num,
+            max_steps=maxstep,
             render_theme=2,
-            ai2s=[microrts_ai.coacAI for _ in range(1)],
+            ai2s=[microrts_ai.coacAI for _ in range(env_num)],
             map_paths=["maps/16x16/basesWorkers16x16.xml"],
             reward_weight=np.array([10.0, 1.0, 1.0, 0.2, 1.0, 4.0]),
         )
@@ -580,9 +639,9 @@ if __name__ == "__main__":
     print(f"Action Space size: {actionSpace}")
 
     ssvd = SSVDVariable(input_w, input_h, actionSpace, [2,2])
-    #run_test_ga(ssvd, envs, 10, 100, 300, device, name="GA_100_10%", elitism=0.1)
-    #run_test_ga(ssvd, envs, env_num, pop, max_gen, device, fitness_f, name=f"GA_{env_num}_{pop}_{int(elitism * 100)}%", elitism=0.1)
-    run_test_es(ssvd, envs, env_num, pop, max_gen, device, fitness_f, name=f"OpenAIES_{env_num}_{pop}_{int(elitism * 100)}%")
+    #run_test_ga(ssvd, envs, 100, 300, device, name="GA_100_10%", elitism=0.1)
+    #run_test_ga(ssvd, envs, pop, max_gen, device, fitness_f, name=f"GA_{env_num}_{pop}_{int(elitism * 100)}%", elitism=0.1, maxstep=maxstep)
+    run_test_es(ssvd, envs, pop, max_gen, device, fitness_f, name=f"OpenAIES_{env_num}_{pop}_{int(elitism * 100)}%", maxstep=maxstep)
 
 if __name__ == "__main__1":
     # writer = get_logger("test")
