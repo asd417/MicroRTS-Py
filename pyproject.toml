@@ -20,7 +20,7 @@ spyder = {version = "^5.1.5", optional = true}
 PettingZoo = "^1.16.0"
 tqdm = "^4.67.1"
 stable-baselines3 = "^2.5.0"
-torch = {version = "2.6.0+cu126", source = "torch-cuda126"}
+# torch = {version = "2.6.0+cu126", source = "torch-cuda126"}
 
 [tool.poetry.dev-dependencies]
 poetry-dynamic-versioning = "^0.13.0"

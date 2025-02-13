@@ -609,3 +609,11 @@ if __name__ == "__main__1":
     
     ssvd = SSVDVariable(16, 16, 16*16+6, [1,1])
     print(ssvd.get_chromosome_size())
+    print(U.shape)
+    print(w1.shape)
+    print(Sigma.shape)
+    print(w2.shape)
+    print(Vh.shape)
+    print(w3.shape)
+    result = evaluateSSVD(w1, w2, w3, t1)
+    print(result.shape)

@@ -1,0 +1,51 @@
+FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04
+
+# install ubuntu dependencies
+ENV DEBIAN_FRONTEND=noninteractive 
+RUN apt-get update
+RUN apt-get -y install curl python3-pip xvfb ffmpeg build-essential python3-opengl
+RUN apt-get update && apt-get install -y
+RUN ln -s /usr/bin/python3 /usr/bin/python
+RUN which python
+RUN which python3
+
+# install microrts dependencies
+RUN apt-get -y -q install wget unzip default-jdk
+
+# install python dependencies
+RUN curl -sSL https://install.python-poetry.org | python3 -
+RUN ln -s /root/.local/bin/poetry /usr/local/bin/poetry
+RUN which poetry
+
+# Ensure Poetry is in PATH
+ENV PATH="/root/.local/bin:$PATH"
+RUN printenv PATH
+COPY pyproject.toml pyproject.toml
+COPY poetry.lock poetry.lock
+
+# copy local files
+COPY ./gym_microrts /gym_microrts
+COPY ./experiments /experiments
+RUN poetry source add --priority explicit pytorch_cu118 https://download.pytorch.org/whl/cu118
+RUN set -eux; \
+    for i in 1 2 3 4 5; do \
+        timeout 600s poetry add --source pytorch_cu126 torch torchvision && break || sleep 5; \
+    done
+RUN set -eux; \
+    for i in 1 2 3 4 5; do \
+        timeout 120s poetry self add poetry-plugin-shell && break || sleep 5; \
+    done
+RUN set -eux; \
+    for i in 1 2 3 4 5; do \
+        timeout 180s poetry install && break || sleep 5; \
+    done
+# COPY build.sh build.sh
+# RUN bash build.sh
+
+COPY ./entrypoint.sh /usr/local/bin/entrypoint.sh
+# Ensure it's executable
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Set the entrypoint
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
