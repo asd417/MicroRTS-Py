@@ -313,6 +313,8 @@ def fitness(envs, chromosome, ssvd, device, trials=1):
 def start_game_mcts(envs, chromosome, maxstep=3000):
     envs.reset(chromosome)
     reward_sum = 0
+    scores = np.zeros((envs.num_envs,))
+    dones = np.ones((envs.num_envs,))
     for i in range(maxstep):
         if RENDER:
             if RECORD:
@@ -321,9 +323,17 @@ def start_game_mcts(envs, chromosome, maxstep=3000):
                 envs.render()
         _, reward, done, info = envs.step()
         reward_sum += sum(reward)
-        if done.any():
-            return reward_sum
-    return reward_sum
+        
+        dones -= done.astype(int)
+        dones = np.clip(dones, 0, None)
+        scores += dones * reward
+        if prev_r != str(scores) or prev_d != str(dones):
+            #print(f"{scores} \t {dones}")
+            prev_r = str(scores)
+            prev_d = str(dones)
+        if np.all(dones == 0):
+            break
+    return sum(scores) / float(envs.num_envs)
 
 def fitness_mcts(envs, chromosome, ssvd, device, trials=10):
     # chromosome is a 1D vector
