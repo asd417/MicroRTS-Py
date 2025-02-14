@@ -8,7 +8,6 @@ RUN apt-get update && apt-get install -y
 RUN ln -s /usr/bin/python3 /usr/bin/python
 RUN which python
 RUN which python3
-
 # install microrts dependencies
 RUN apt-get -y -q install wget unzip default-jdk
 
@@ -45,6 +44,8 @@ RUN set -eux; \
 COPY ./entrypoint.sh /usr/local/bin/entrypoint.sh
 # Ensure it's executable
 RUN chmod +x /usr/local/bin/entrypoint.sh
+RUN poetry export --without-hashes --format=requirements.txt > requirements.txt
+RUN cat requirements.txt
 
 # Set the entrypoint
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

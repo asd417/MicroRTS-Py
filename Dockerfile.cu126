@@ -22,7 +22,6 @@ RUN printenv PATH
 COPY pyproject.toml pyproject.toml
 COPY poetry.lock poetry.lock
 
-
 # copy local files
 COPY ./gym_microrts /gym_microrts
 COPY ./experiments /experiments
@@ -47,6 +46,8 @@ RUN set -eux; \
 COPY ./entrypoint.sh /usr/local/bin/entrypoint.sh
 # Ensure it's executable
 RUN chmod +x /usr/local/bin/entrypoint.sh
+RUN poetry export --without-hashes --format=requirements.txt > requirements.txt
+RUN cat requirements.txt
 
 # Set the entrypoint
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
