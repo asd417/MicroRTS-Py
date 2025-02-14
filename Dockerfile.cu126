@@ -3,7 +3,7 @@ FROM nvidia/cuda:12.6.0-runtime-ubuntu22.04
 RUN mkdir /opt/python3.10
 # To avoid .pyc files and save space
 ENV PYTHONDONTWRITEBYTECODE 1
-RUN DEBIAN_FRONTEND=noninteractive
+RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC
 ENV PYTHONUNBUFFERED 1
 
 # Install all dependecnies you need to compile Python3.10
