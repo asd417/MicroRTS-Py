@@ -11,13 +11,13 @@ RUN apt-get update
 RUN apt-get install -y wget libffi-dev gcc build-essential curl tcl-dev tk-dev uuid-dev lzma-dev liblzma-dev libssl-dev libsqlite3-dev
 
 # Download Python source code from official site and build it
-RUN wget https://www.python.org/ftp/python/3.10.0/Python-3.10.0.tgz
-RUN tar -zxvf Python-3.10.0.tgz
-RUN cd Python-3.10.0 && ./configure --prefix=/opt/python3.10 && make && make install
+RUN wget https://www.python.org/ftp/python/3.10.2/Python-3.10.2.tgz
+RUN tar -zxvf Python-3.10.2.tgz
+RUN cd Python-3.10.2 && ./configure --prefix=/opt/python3.10 && make && make install
 
 # Delete the python source code and temp files
-RUN rm Python-3.10.0.tgz
-RUN rm -r Python-3.10.0/
+RUN rm Python-3.10.2.tgz
+RUN rm -r Python-3.10.2/
 
 # Now link it so that $python works
 RUN ln -s /opt/python3.10/python3.10 /usr/bin/python
