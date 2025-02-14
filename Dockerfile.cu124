@@ -26,7 +26,7 @@ COPY poetry.lock poetry.lock
 COPY ./gym_microrts /gym_microrts
 COPY ./experiments /experiments
 RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
-
+RUN poetry lock
 RUN set -eux; \
     for i in 1 2 3 4 5; do \
         timeout 120s poetry self add poetry-plugin-shell && break || sleep 5; \
