@@ -26,7 +26,7 @@ COPY poetry.lock poetry.lock
 # copy local files
 COPY ./gym_microrts /gym_microrts
 COPY ./experiments /experiments
-RUN pip install torch==2.6.0+cu124 torchvision==2.6.0 -f https://download.pytorch.org/whl/cu118
+RUN pip install install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
 RUN set -eux; \
     for i in 1 2 3 4 5; do \
