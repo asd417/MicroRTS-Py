@@ -22,16 +22,11 @@ RUN printenv PATH
 COPY pyproject.toml pyproject.toml
 COPY poetry.lock poetry.lock
 
-
 # copy local files
 COPY ./gym_microrts /gym_microrts
 COPY ./experiments /experiments
-RUN poetry source add --priority explicit pytorch_cu126 https://download.pytorch.org/whl/cu126
+RUN pip install torch==2.6.0+cu126 torchvision==2.6.0 -f https://download.pytorch.org/whl/torch_stable.html
 
-RUN set -eux; \
-    for i in 1 2 3 4 5; do \
-        timeout 600s poetry add --source pytorch_cu126 torch torchvision && break || sleep 5; \
-    done
 RUN set -eux; \
     for i in 1 2 3 4 5; do \
         timeout 120s poetry self add poetry-plugin-shell && break || sleep 5; \
@@ -40,8 +35,6 @@ RUN set -eux; \
     for i in 1 2 3 4 5; do \
         timeout 180s poetry install && break || sleep 5; \
     done
-# COPY build.sh build.sh
-# RUN bash build.sh
 
 COPY ./entrypoint.sh /usr/local/bin/entrypoint.sh
 # Ensure it's executable
