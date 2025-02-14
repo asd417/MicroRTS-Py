@@ -112,13 +112,15 @@ class MicroRTSMCTSEnv:
 
         # launch the JVM
         if not jpype._jpype.isStarted():
+            jar_list_file = './jarlist.txt'
             
             registerDomain("ts", alias="tests")
             registerDomain("ai")
-            #registerDomain("rts")
+            registerDomain("rts")
             jars = [
                 "microrts.jar",
                 "lib/bots/Coac.jar",
+                "lib/ejml-v0.42-libs/*",
                 #"lib/bots/Droplet.jar",
                 #"lib/bots/GRojoA3N.jar",
                 #"lib/bots/Izanagi.jar",
@@ -128,9 +130,13 @@ class MicroRTSMCTSEnv:
                 #"lib/bots/mayariBot.jar",  # "MindSeal.jar" 
                 # windows has path length limit. 
             ]
+            with open(jar_list_file, 'w') as file:
+                for jar in jars:
+                    file.write(os.path.join(self.microrts_path, jar) + "\n")
             for jar in jars:
                 jpype.addClassPath(os.path.join(self.microrts_path, jar))
             jpype.startJVM(*jvm_args, convertStrings=False)
+            #jpype.startJVM(f"-Djava.class.path=@{jar_list_file}", convertStrings=False)
             jpype.java.lang.System.setProperty("org.jpype.debug", "true")
 
         # start microrts client
@@ -206,7 +212,9 @@ class MicroRTSMCTSEnv:
         self.utt = json.loads(str(self.render_client.sendUTT()))
 
     def reset(self, chromosome) -> None:
-        self.vec_client.reset([0] * self.num_envs, JArray(JFloat)(chromosome))
+        #print(f"chromosome {chromosome}")
+        #print(f"self.num_envs {self.num_envs}")
+        self.vec_client.reset([0] * self.num_envs, JArray(JFloat)(np.array(chromosome,dtype=np.float32, copy=True)))
 
     def step_wait(self):
         responses = self.vec_client.gameStep([0] * self.num_envs)
@@ -230,7 +238,7 @@ class MicroRTSMCTSEnv:
 
     # MCTS evaluation does not take in any action. Action is evaluated by ingame bot
     # Pass chromosome to the reset function
-    def step(self, _):
+    def step(self):
         return self.step_wait()
 
     def getattr_depth_check(self, name, already_found):

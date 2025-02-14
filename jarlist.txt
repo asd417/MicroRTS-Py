@@ -1,0 +1,3 @@
+/root/MicroRTS-Py/gym_microrts/microrts/microrts.jar
+/root/MicroRTS-Py/gym_microrts/microrts/lib/bots/Coac.jar
+/root/MicroRTS-Py/gym_microrts/microrts/lib/ejml-v0.42-libs/*

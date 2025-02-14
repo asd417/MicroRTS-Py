@@ -21,6 +21,11 @@ import datetime
 
 
 class SSVDVariable:
+    # U is of size (input_h,input_h)
+    # Vh is of size (input_w,input_w)
+    # therefore
+    # weights1[0] is of size (input_h, input_h)
+    # weights2[0] is of size (input_w, input_w)
     def __init__(self, input_w, input_h, outputSize, structure, k='full'):
         self.inputSizeW = input_w
         self.inputSizeH = input_h
@@ -29,20 +34,20 @@ class SSVDVariable:
         self.post_s_tensors = structure[1]
 
     def get_chromosome_size(self):
-        return self.pre_s_tensors * min(self.inputSizeH,self.inputSizeW)**2 + self.post_s_tensors * max(self.inputSizeH,self.inputSizeW)**2 + self.outputSize * self.inputSizeW * self.inputSizeH
+        return self.pre_s_tensors * self.inputSizeH**2 + self.post_s_tensors * self.inputSizeW**2 + self.outputSize * self.inputSizeW * self.inputSizeH
 
     def chromosome_to_weights(self, chromosome : torch.Tensor):
         expected_size = self.get_chromosome_size()
         if chromosome.shape[0] != expected_size:
             raise ValueError(f"Vector size must be {expected_size}, but got {chromosome.shape[0]}.")
         weights_1 = chromosome[
-            : self.pre_s_tensors * min(self.inputSizeH,self.inputSizeW)**2
-            ].view(self.pre_s_tensors, min(self.inputSizeH,self.inputSizeW), min(self.inputSizeH,self.inputSizeW))      # First matrix (n x n)
+            : self.pre_s_tensors * self.inputSizeH**2
+            ].view(self.pre_s_tensors, self.inputSizeH, self.inputSizeH)      # First matrix (n x n)
         weights_2 = chromosome[
-            self.pre_s_tensors * min(self.inputSizeH,self.inputSizeW)**2 : 
-            self.pre_s_tensors * min(self.inputSizeH,self.inputSizeW)**2 + self.post_s_tensors * max(self.inputSizeH,self.inputSizeW)**2
-            ].view(self.post_s_tensors, max(self.inputSizeH,self.inputSizeW), max(self.inputSizeH,self.inputSizeW))   # Second matrix (m x n^2)
-        weightO = chromosome[self.pre_s_tensors * min(self.inputSizeH,self.inputSizeW)**2 + self.post_s_tensors * max(self.inputSizeH,self.inputSizeW)**2 : 
+            self.pre_s_tensors * self.inputSizeH**2 : 
+            self.pre_s_tensors * self.inputSizeH**2 + self.post_s_tensors * self.inputSizeW**2
+            ].view(self.post_s_tensors,  self.inputSizeW, self.inputSizeW)   # Second matrix (m x n^2)
+        weightO = chromosome[self.pre_s_tensors * self.inputSizeH**2 + self.post_s_tensors * self.inputSizeW**2 : 
                              ].view(self.outputSize, self.inputSizeW * self.inputSizeH)
         return weights_1, weights_2, weightO
 
@@ -306,7 +311,10 @@ def fitness(envs, chromosome, ssvd, maxstep = 3000):
 def fitness_mcts(envs, chromosome, ssvd, maxstep=3000):
     # chromosome is a 1D vector
     # chromosomes are turned into weight matrices on java
+    chromosome = chromosome.squeeze()
     envs.reset(chromosome)
+    prev_r = None
+    prev_d = None
     scores = np.zeros((envs.num_envs,))
     dones = np.ones((envs.num_envs,))
     for i in range(maxstep):
@@ -595,8 +603,8 @@ def run_test_gam(ssvd, envs, pop_size, max_iter, device, fitness_func, name="GA-
     envs.close()
 
 RECORD = False
-RENDER = False
-USE_MCTS = False
+RENDER = True
+USE_MCTS = True
 if __name__ == "__main__":
     #test_conv()
     env_num = 5
@@ -604,6 +612,7 @@ if __name__ == "__main__":
     max_gen = 300
     elitism = 0.1
     maxstep = 3000
+    
     if not USE_MCTS:
         envs = MicroRTSGridModeVecEnv(
             num_selfplay_envs=0,
@@ -615,6 +624,9 @@ if __name__ == "__main__":
             reward_weight=np.array([10.0, 1.0, 1.0, 0.2, 1.0, 4.0]),
         )
         fitness_f = fitness
+        input_h = envs.height
+        input_w = envs.width
+        actionSpace = envs.height * envs.width + 6 # board + unit type count
     else:
         envs = MicroRTSMCTSEnv(
             num_selfplay_envs=0,
@@ -626,14 +638,16 @@ if __name__ == "__main__":
             reward_weight=np.array([10.0, 1.0, 1.0, 0.2, 1.0, 4.0]),
         )
         fitness_f = fitness_mcts
+        input_h = envs.height
+        input_w = envs.width
+        actionSpace = 1
     if RECORD:
         envs = VecVideoRecorder(envs, "videos", record_video_trigger=lambda x: x % 4000 == 0, video_length=2000)
 
     #device = 'cuda' if torch.cuda.is_available() else 'cpu'
     device = 'cpu'
-    input_h = envs.height
-    input_w = envs.width
-    actionSpace = envs.height * envs.width + 6 # board + unit type count
+    
+    
     print(f"Observation Space Height: {input_h}")
     print(f"Observation Space Width: {input_w}")
     print(f"Action Space size: {actionSpace}")
@@ -641,7 +655,8 @@ if __name__ == "__main__":
     ssvd = SSVDVariable(input_w, input_h, actionSpace, [2,2])
     #run_test_ga(ssvd, envs, 100, 300, device, name="GA_100_10%", elitism=0.1)
     #run_test_ga(ssvd, envs, pop, max_gen, device, fitness_f, name=f"GA_{env_num}_{pop}_{int(elitism * 100)}%", elitism=0.1, maxstep=maxstep)
-    run_test_es(ssvd, envs, pop, max_gen, device, fitness_f, name=f"OpenAIES_{env_num}_{pop}_{int(elitism * 100)}%", maxstep=maxstep)
+    #run_test_es(ssvd, envs, pop, max_gen, device, fitness_f, name=f"OpenAIES_{env_num}_{pop}_{int(elitism * 100)}%", maxstep=maxstep)
+    run_test_gam(ssvd, envs, pop, max_gen, device, fitness_f, name=f"GAM_{env_num}_{pop}_{int(elitism * 100)}%", maxstep=maxstep)
 
 if __name__ == "__main__1":
     # writer = get_logger("test")
