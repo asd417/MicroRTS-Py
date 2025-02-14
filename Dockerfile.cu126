@@ -3,12 +3,11 @@ FROM nvidia/cuda:12.6.0-runtime-ubuntu22.04
 RUN mkdir /opt/python3.10
 # To avoid .pyc files and save space
 ENV PYTHONDONTWRITEBYTECODE 1
-RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC
 ENV PYTHONUNBUFFERED 1
-
+RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC
 # Install all dependecnies you need to compile Python3.10
-RUN apt update
-RUN apt install -y wget libffi-dev gcc build-essential curl tcl-dev tk-dev uuid-dev lzma-dev liblzma-dev libssl-dev libsqlite3-dev
+RUN apt-get update
+RUN apt-get install -y wget libffi-dev gcc build-essential curl tcl-dev tk-dev uuid-dev lzma-dev liblzma-dev libssl-dev libsqlite3-dev
 
 # Download Python source code from official site and build it
 RUN wget https://www.python.org/ftp/python/3.10.0/Python-3.10.0.tgz
