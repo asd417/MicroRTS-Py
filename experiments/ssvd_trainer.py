@@ -26,7 +26,7 @@ class SSVDVariable:
     # therefore
     # weights1[0] is of size (input_h, input_h)
     # weights2[0] is of size (input_w, input_w)
-    def __init__(self, input_w, input_h, outputSize, structure, k='full'):
+    def __init__(self, input_h, input_w, outputSize, structure, k='full'):
         self.inputSizeW = input_w
         self.inputSizeH = input_h
         self.outputSize = outputSize
@@ -652,7 +652,7 @@ if __name__ == "__main__":
     print(f"Observation Space Width: {input_w}")
     print(f"Action Space size: {actionSpace}")
 
-    ssvd = SSVDVariable(input_w, input_h, actionSpace, [2,2])
+    ssvd = SSVDVariable(input_h, input_w, actionSpace, [2,2])
     #run_test_ga(ssvd, envs, 100, 300, device, name="GA_100_10%", elitism=0.1)
     #run_test_ga(ssvd, envs, pop, max_gen, device, fitness_f, name=f"GA_{env_num}_{pop}_{int(elitism * 100)}%", elitism=0.1, maxstep=maxstep)
     #run_test_es(ssvd, envs, pop, max_gen, device, fitness_f, name=f"OpenAIES_{env_num}_{pop}_{int(elitism * 100)}%", maxstep=maxstep)
