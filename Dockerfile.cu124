@@ -44,8 +44,7 @@ RUN set -eux; \
 COPY ./entrypoint.sh /usr/local/bin/entrypoint.sh
 # Ensure it's executable
 RUN chmod +x /usr/local/bin/entrypoint.sh
-RUN poetry export --without-hashes --format=requirements.txt > requirements.txt
-RUN cat requirements.txt
-
+RUN poetry show > poetry_installed.txt
+RUN cat poetry_installed.txt
 # Set the entrypoint
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
