@@ -144,7 +144,8 @@ def roulette_wheel_selection(population, device="cpu"):
 
 def crossover_matrix(parent1 : torch.Tensor, parent2 : torch.Tensor):
     assert str(parent1.shape) == str(parent2.shape), f"Can not crossover two matrices with different shapes: {parent1.shape} {parent2.shape}"
-    assert not (parent1.shape[0] == 1 and parent2.shape[0] == 1), f"Can not crossover two matrices with size 1x1"
+    #assert not (parent1.shape[0] == 1 and parent2.shape[0] == 1), f"Can not crossover two matrices with size 1x1"
+    #print(f"shape: {parent1.shape}")
     # example of crossing over two matrices with shape (3,2)
 
     # maxsel = 3 - 1 + 2 - 1 = 3
@@ -181,10 +182,11 @@ def crossover_gam(parent1, parent2, ssvd : SSVDVariable):
     """Performs single-point crossover between two matrices."""
     p1w1s, p1w2s, p1wO = ssvd.chromosome_to_weights(parent1)
     p2w1s, p2w2s, p2wO = ssvd.chromosome_to_weights(parent2)
-    pow1s = torch.cat([crossover_matrix(p1w1, p2w1) for p1w1, p2w1 in zip(p1w1s, p2w1s)])
-    pow2s = torch.cat([crossover_matrix(p1w2, p2w2) for p1w2, p2w2 in zip(p1w2s, p2w2s)])
-    powO = crossover_matrix(p1wO,p2wO)
-    return torch.cat((pow1s, pow2s, powO)).flatten()
+    pow1s = torch.cat([crossover_matrix(p1w1, p2w1) for p1w1, p2w1 in zip(p1w1s, p2w1s)]).flatten()
+    pow2s = torch.cat([crossover_matrix(p1w2, p2w2) for p1w2, p2w2 in zip(p1w2s, p2w2s)]).flatten()
+    powO = crossover_matrix(p1wO,p2wO).flatten()
+    print(f"{pow1s.shape}, {pow2s.shape}, {powO.shape}")
+    return torch.reshape(torch.cat((pow1s, pow2s, powO)).flatten(),(-1,1))
 
 
 def mutate_multivariate_gaussian(matrix, mutation_rate=0.1):
@@ -192,6 +194,8 @@ def mutate_multivariate_gaussian(matrix, mutation_rate=0.1):
     Applies mutation by adding noise sampled from a multivariate Gaussian distribution.
     The mean is zero, and the covariance matrix is an identity matrix scaled by a factor.
     """
+    
+    #print(f"mutate_multivariate_gaussian {matrix.shape}")
     rows, cols = matrix.shape
     mutation_mask = torch.rand(rows, cols, device=matrix.device) < mutation_rate  # Decide mutation points
     

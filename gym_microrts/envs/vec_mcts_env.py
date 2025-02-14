@@ -214,7 +214,7 @@ class MicroRTSMCTSEnv:
     def reset(self, chromosome) -> None:
         #print(f"chromosome {chromosome}")
         #print(f"self.num_envs {self.num_envs}")
-        self.vec_client.reset([0] * self.num_envs, JArray(JFloat)(np.array(chromosome,dtype=np.float32, copy=True)))
+        self.vec_client.reset([0] * self.num_envs, JArray(JFloat)(chromosome.numpy()))
 
     def step_wait(self):
         responses = self.vec_client.gameStep([0] * self.num_envs)
