@@ -35,13 +35,14 @@ RUN apt-get -y -q install wget unzip default-jdk
 # ENV PATH="/root/.local/bin:$PATH"
 
 # copy local files
-COPY ./gym_microrts /gym_microrts
-COPY ./experiments /experiments
-COPY requirements.txt requirements.txt
 RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+COPY requirements.txt requirements.txt
 RUN pip3 install -r requirements.txt
 # COPY build.sh build.sh
 # RUN bash build.sh
+
+COPY ./gym_microrts /gym_microrts
+COPY ./experiments /experiments
 
 COPY ./entrypoint.sh /usr/local/bin/entrypoint.sh
 # Ensure it's executable
