@@ -44,8 +44,8 @@ RUN pip3 install -r requirements.txt
 # COPY build.sh build.sh
 # RUN bash build.sh
 
-COPY ./gym_microrts /gym_microrts
-COPY ./experiments /experiments
+COPY ./gym_microrts ./gym_microrts
+COPY ./experiments ./experiments
 
 COPY ./entrypoint.sh /usr/local/bin/entrypoint.sh
 # Ensure it's executable
