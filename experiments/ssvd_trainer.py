@@ -280,7 +280,7 @@ def softmax(x, axis=None):
 
 #TODO let this spawn multiple environments at the same time. The microrts client already supports it.
 #need to revert some of the work I did on the java side because I might have broken it.
-def fitness(envs, chromosome, ssvd, maxstep = 3000):
+def fitness(envs, chromosome, ssvd, maxstep = 3000, render=False, record=False):
     weights1, weights2, weightsO = ssvd.chromosome_to_weights(chromosome)
     obs = envs.reset()
     prev_r = None
@@ -288,11 +288,13 @@ def fitness(envs, chromosome, ssvd, maxstep = 3000):
     scores = np.zeros((envs.num_envs,))
     dones = np.ones((envs.num_envs,))
     for i in range(maxstep):
-        if RENDER:
-            if RECORD:
+        if render:
+            if record:
                 envs.render(mode="rgb_array")
             else:
                 envs.render()
+        if not render and record:
+            envs.render(mode="rgb_array")
         model = SSVDModel(envs, weights1.device)
         action = model(obs, weights1, weights2, weightsO)
         obs, reward, done, info = envs.step(action.to("cpu").detach().numpy())
@@ -312,7 +314,7 @@ def fitness(envs, chromosome, ssvd, maxstep = 3000):
     del weightsO
     return sum(scores) / float(envs.num_envs)
 
-def fitness_mcts(envs, chromosome, ssvd, maxstep=3000):
+def fitness_mcts(envs, chromosome, ssvd, maxstep=3000, render=False, record=False):
     # chromosome is a 1D vector
     # chromosomes are turned into weight matrices on java
     chromosome = chromosome.squeeze()
@@ -322,11 +324,13 @@ def fitness_mcts(envs, chromosome, ssvd, maxstep=3000):
     scores = np.zeros((envs.num_envs,))
     dones = np.ones((envs.num_envs,))
     for i in range(maxstep):
-        if RENDER:
-            if RECORD:
+        if render:
+            if record:
                 envs.render(mode="rgb_array")
             else:
                 envs.render()
+        if not render and record:
+            envs.render(mode="rgb_array")
         _, reward, done, info = envs.step()
         dones -= done.astype(int)
         dones = np.clip(dones, 0, None)
@@ -420,7 +424,7 @@ def get_logger(name, directory="runs/") -> SummaryWriter:
     return writer
 
 # openai es
-def run_test_es(ssvd, envs, pop_size, max_iter, device, fitness_func, override=False, name="OpenAI-ES", maxstep=3000):
+def run_test_es(ssvd, envs, pop_size, max_iter, device, fitness_func, render=False, record=False, override=False, name="OpenAI-ES", maxstep=3000):
     test_name = name + "-population"
     sigma = 0.1    # noise standard deviation
     alpha = 0.001  # learning rate
@@ -436,7 +440,7 @@ def run_test_es(ssvd, envs, pop_size, max_iter, device, fitness_func, override=F
 
         for j in range(pop_size):
             w_try = w + sigma*N[j]
-            f = fitness_func(envs, w_try, ssvd, maxstep=maxstep)
+            f = fitness_func(envs, w_try, ssvd, maxstep=maxstep, render=render)
             R[j] = f
             writer.add_histogram("Chromosome", w_try, i)
             if f > best_fitness_single_gen:
@@ -464,7 +468,7 @@ def run_test_es(ssvd, envs, pop_size, max_iter, device, fitness_func, override=F
         w = w.unsqueeze(0).unsqueeze(-1)
         save_pop(w, name=test_name)
 
-def run_test_ga(ssvd, envs, pop_size, max_iter, device, fitness_func, override=False, name="GA", elitism=0.1, maxstep=3000):
+def run_test_ga(ssvd, envs, pop_size, max_iter, device, fitness_func, render=False, record=False, override=False, name="GA", elitism=0.1, maxstep=3000):
     test_name = name + "-population"
     writer = get_logger(name)
     gi, p = load_or_create_pop(pop_size, override=override, name=test_name)
@@ -481,7 +485,7 @@ def run_test_ga(ssvd, envs, pop_size, max_iter, device, fitness_func, override=F
         best_fitness_single_gen = 0
         progress = tqdm.tqdm(total=len(p), desc=f"{test_name} Generation {gi}/{max_iter}")
         for chromosome in p:
-            f = fitness_func(envs, chromosome, ssvd, maxstep=maxstep) 
+            f = fitness_func(envs, chromosome, ssvd, maxstep=maxstep, render=render) 
             tqdm.tqdm.write(f"Fitness: {f}")
             writer.add_histogram("Chromosome", chromosome, gi)
             
@@ -536,7 +540,7 @@ def run_test_ga(ssvd, envs, pop_size, max_iter, device, fitness_func, override=F
     envs.close()
 
 # GA but crossover happens between weights of same shapes
-def run_test_gam(ssvd, envs, pop_size, max_iter, device, fitness_func, override=False, name="GA-M", elitism=0.1, maxstep=3000):
+def run_test_gam(ssvd, envs, pop_size, max_iter, device, fitness_func, render=False, record=False, override=False, name="GA-M", elitism=0.1, maxstep=3000):
     test_name = name + "-population"
     writer = get_logger(name)
     gi, p = load_or_create_pop(pop_size, override=override, name=test_name)
@@ -553,7 +557,7 @@ def run_test_gam(ssvd, envs, pop_size, max_iter, device, fitness_func, override=
         best_fitness_single_gen = 0
         progress = tqdm.tqdm(total=len(p), desc=f"{test_name} Generation {gi}/{max_iter}")
         for chromosome in p:
-            f = fitness_func(envs, chromosome, ssvd, maxstep=maxstep) 
+            f = fitness_func(envs, chromosome, ssvd, maxstep=maxstep, render=render) 
             tqdm.tqdm.write(f"Fitness: {f}")
             writer.add_histogram("Chromosome", chromosome, gi)
             

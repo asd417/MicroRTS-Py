@@ -104,12 +104,12 @@ if __name__ == "__main__":
     if args.optimizer == "GA":
         testname = f"GA_{env_num}_{pop}_{int(elitism * 100)}%" if args.exp_name == "" else args.exp_name
         print(f"Set experiment name as {testname}")
-        run_test_ga(ssvd, envs, pop, max_gen, device, fitness_f, name=testname, override=args.override_exp, elitism=elitism, maxstep=maxstep, render=(not args.headless))
+        run_test_ga(ssvd, envs, pop, max_gen, device, fitness_f, name=testname, override=args.override_exp, elitism=elitism, maxstep=maxstep, render=(not args.headless), record=args.capture_video)
     if args.optimizer == "GAM":
         testname = f"GAM_{env_num}_{pop}_{int(elitism * 100)}%" if args.exp_name == "" else args.exp_name
         print(f"Set experiment name as {testname}")
-        run_test_gam(ssvd, envs, pop, max_gen, device, fitness_f, name=testname, override=args.override_exp, elitism=elitism, maxstep=maxstep, render=(not args.headless))
+        run_test_gam(ssvd, envs, pop, max_gen, device, fitness_f, name=testname, override=args.override_exp, elitism=elitism, maxstep=maxstep, render=(not args.headless), record=args.capture_video)
     if args.optimizer == "OPENAIES":
         testname = f"OpenAIES_{env_num}_{pop}_{int(elitism * 100)}%" if args.exp_name == "" else args.exp_name
         print(f"Set experiment name as {testname}")
-        run_test_es(ssvd, envs, pop, max_gen, device, fitness_f, name=testname, override=args.override_exp, maxstep=maxstep, render=(not args.headless))
+        run_test_es(ssvd, envs, pop, max_gen, device, fitness_f, name=testname, override=args.override_exp, maxstep=maxstep, render=(not args.headless), record=args.capture_video)
