@@ -101,15 +101,15 @@ if __name__ == "__main__":
     ssvd = SSVDVariable(input_h, input_w, actionSpace, [args.pre_s_weights,args.post_s_weights])
     print(f"Attempting to optimize {ssvd.get_chromosome_size()} weights")
 
-    if args.optimizer is "GA":
+    if args.optimizer == "GA":
         testname = f"GA_{env_num}_{pop}_{int(elitism * 100)}%" if args.exp_name == "" else args.exp_name
         print(f"Set experiment name as {testname}")
         run_test_ga(ssvd, envs, pop, max_gen, device, fitness_f, name=testname, override=args.override_exp, elitism=elitism, maxstep=maxstep, render=(not args.headless))
-    if args.optimizer is "GAM":
+    if args.optimizer == "GAM":
         testname = f"GAM_{env_num}_{pop}_{int(elitism * 100)}%" if args.exp_name == "" else args.exp_name
         print(f"Set experiment name as {testname}")
         run_test_gam(ssvd, envs, pop, max_gen, device, fitness_f, name=testname, override=args.override_exp, elitism=elitism, maxstep=maxstep, render=(not args.headless))
-    if args.optimizer is "OPENAIES":
+    if args.optimizer == "OPENAIES":
         testname = f"OpenAIES_{env_num}_{pop}_{int(elitism * 100)}%" if args.exp_name == "" else args.exp_name
         print(f"Set experiment name as {testname}")
         run_test_es(ssvd, envs, pop, max_gen, device, fitness_f, name=testname, override=args.override_exp, maxstep=maxstep, render=(not args.headless))
