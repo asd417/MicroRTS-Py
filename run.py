@@ -60,7 +60,7 @@ if __name__ == "__main__":
     pop = args.population
     max_gen = args.max_gen
     elitism = args.elitism
-    maxstep = args.max_step
+    maxstep = args.max_steps
     
     if not args.mcts:
         envs = MicroRTSGridModeVecEnv(
