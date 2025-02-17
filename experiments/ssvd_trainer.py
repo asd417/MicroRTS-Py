@@ -396,7 +396,7 @@ def test_conv():
 def save_pop(p, name="population"):
     torch.save(p, name+'.pt')
 
-def load_or_create_pop(size, override=False, name="population", device='cpu'):
+def load_or_create_pop(size, ssvd, override=False, name="population", device='cpu'):
     if override:
         p = None
         logfile = None
@@ -428,7 +428,7 @@ def run_test_es(ssvd, envs, pop_size, max_iter, device, fitness_func, render=Fal
     test_name = name + "-population"
     sigma = 0.1    # noise standard deviation
     alpha = 0.001  # learning rate
-    gen_start, w = load_or_create_pop(1, override=override, name=test_name, device=device)
+    gen_start, w = load_or_create_pop(1, ssvd, override=override, name=test_name, device=device)
     writer = get_logger(name)
     
     for i in range(gen_start, max_iter):
@@ -471,7 +471,7 @@ def run_test_es(ssvd, envs, pop_size, max_iter, device, fitness_func, render=Fal
 def run_test_ga(ssvd, envs, pop_size, max_iter, device, fitness_func, render=False, record=False, override=False, name="GA", elitism=0.1, maxstep=3000):
     test_name = name + "-population"
     writer = get_logger(name)
-    gi, p = load_or_create_pop(pop_size, override=override, name=test_name)
+    gi, p = load_or_create_pop(pop_size, ssvd, override=override, name=test_name)
     mutation_rate = 0.5
 
     best_chromosome = None
@@ -543,7 +543,7 @@ def run_test_ga(ssvd, envs, pop_size, max_iter, device, fitness_func, render=Fal
 def run_test_gam(ssvd, envs, pop_size, max_iter, device, fitness_func, render=False, record=False, override=False, name="GA-M", elitism=0.1, maxstep=3000):
     test_name = name + "-population"
     writer = get_logger(name)
-    gi, p = load_or_create_pop(pop_size, override=override, name=test_name)
+    gi, p = load_or_create_pop(pop_size, ssvd, override=override, name=test_name)
     mutation_rate = 0.5
 
     best_chromosome = None
