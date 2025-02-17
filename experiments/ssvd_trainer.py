@@ -345,14 +345,14 @@ def fitness_mcts(envs, chromosome, ssvd, maxstep=3000, render=False, record=Fals
 
 def load_files(pt_file, txt_file):
     # Check if the .pt file exists
-    if os.path.exists(pt_file):
+    if os.path.exists(os.path.join(os.getcwd(), pt_file)):
         tensor_data = torch.load(pt_file)
     else:
         tensor_data = None
     
     # Check if the .txt file exists
     if os.path.exists(txt_file):
-        with open(txt_file, 'r') as file:
+        with open(os.path.join(os.getcwd(), txt_file), 'r') as file:
             text_data = file.read()
     else:
         text_data = None
@@ -361,7 +361,7 @@ def load_files(pt_file, txt_file):
 
 def write_log(log_message, name="population"):
     # Open the log file in append mode ('a'), so new logs are added to the end
-    with open(name+"_log.txt", 'a') as file:
+    with open(os.path.join(os.getcwd(), name+"_log.txt"), 'a') as file:
         file.write(log_message + '\n')
     #print(f"Log written to {log_file}")
 
@@ -405,11 +405,12 @@ def load_or_create_pop(size, ssvd, override=False, name="population", device='cp
     gi = 1
     if p is None:
         p = create_population((ssvd.get_chromosome_size(),1), size, device)
-        with open(name+"_log.txt", 'w') as file:
+        with open(os.path.join(os.getcwd(), name+"_log.txt"), 'w') as file:
             file.write("Starting new training loop" + '\n')
+        print()
 
     if (not logfile is None) and not override:
-        with open(name+"_log.txt", 'r') as file:
+        with open(os.path.join(os.getcwd(), name+"_log.txt", 'r')) as file:
             print(f"Found existing log {name+'_log.txt'}")
             lines = file.readlines()
             last_line = lines[-1].strip().split()
