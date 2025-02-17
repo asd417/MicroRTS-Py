@@ -362,6 +362,7 @@ def load_files(pt_file, txt_file):
 def write_log(log_message, name="population"):
     # Open the log file in append mode ('a'), so new logs are added to the end
     with open(os.path.join(os.getcwd(), name+"_log.txt"), 'a') as file:
+        print(f"Saving to {os.path.join(os.getcwd(), name+"_log.txt")}")
         file.write(log_message + '\n')
     #print(f"Log written to {log_file}")
 
