@@ -53,7 +53,7 @@ To train an agent inside a docker container, run the following
 ```bash
 git submodule update --init --recursive
 docker build -f Dockerfile.cu<your cuda version> -t microrts-image .
-docker run -it --rm --gpus all microrts-image python3 run.py -h
+docker run -it --rm --gpus all -v .:/app:rw microrts-image python3 run.py --cuda --optimizer GA --population 50
 ```
 
 To view inside the container
