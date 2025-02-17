@@ -343,19 +343,15 @@ def load_files(pt_file, txt_file):
     # Check if the .pt file exists
     if os.path.exists(pt_file):
         tensor_data = torch.load(pt_file)
-        print(f"Loaded tensor data from {pt_file}")
     else:
         tensor_data = None
-        print(f"{pt_file} does not exist.")
     
     # Check if the .txt file exists
     if os.path.exists(txt_file):
         with open(txt_file, 'r') as file:
             text_data = file.read()
-        print(f"Loaded text data from {txt_file}")
     else:
         text_data = None
-        print(f"{txt_file} does not exist.")
     
     return tensor_data, text_data
 
@@ -396,16 +392,21 @@ def test_conv():
 def save_pop(p, name="population"):
     torch.save(p, name+'.pt')
 
-def load_or_create_pop(size, name="population", device='cpu'):
-    p, logfile = load_files(name+".pt", name+"_log.txt")
+def load_or_create_pop(size, override=False, name="population", device='cpu'):
+    if override:
+        p = None
+        logfile = None
+    else:
+        p, logfile = load_files(name+".pt", name+"_log.txt")
     gi = 1
     if p is None:
         p = create_population((ssvd.get_chromosome_size(),1), size, device)
         with open(name+"_log.txt", 'w') as file:
             file.write("Starting new training loop" + '\n')
 
-    if not logfile is None:
+    if (not logfile is None) and not override:
         with open(name+"_log.txt", 'r') as file:
+            print(f"Found existing log {name+"_log.txt"}")
             lines = file.readlines()
             last_line = lines[-1].strip().split()
             if last_line[0] == "Generation":
@@ -419,11 +420,11 @@ def get_logger(name, directory="runs/") -> SummaryWriter:
     return writer
 
 # openai es
-def run_test_es(ssvd, envs, pop_size, max_iter, device, fitness_func, name="OpenAI-ES", maxstep=3000):
+def run_test_es(ssvd, envs, pop_size, max_iter, device, fitness_func, override=False, name="OpenAI-ES", maxstep=3000):
     test_name = name + "-population"
     sigma = 0.1    # noise standard deviation
     alpha = 0.001  # learning rate
-    gen_start, w = load_or_create_pop(1, name=test_name, device=device)
+    gen_start, w = load_or_create_pop(1, override=override, name=test_name, device=device)
     writer = get_logger(name)
     
     for i in range(gen_start, max_iter):
@@ -463,10 +464,10 @@ def run_test_es(ssvd, envs, pop_size, max_iter, device, fitness_func, name="Open
         w = w.unsqueeze(0).unsqueeze(-1)
         save_pop(w, name=test_name)
 
-def run_test_ga(ssvd, envs, pop_size, max_iter, device, fitness_func, name="GA", elitism=0.1, maxstep=3000):
+def run_test_ga(ssvd, envs, pop_size, max_iter, device, fitness_func, override=False, name="GA", elitism=0.1, maxstep=3000):
     test_name = name + "-population"
     writer = get_logger(name)
-    gi, p = load_or_create_pop(pop_size, name=test_name)
+    gi, p = load_or_create_pop(pop_size, override=override, name=test_name)
     mutation_rate = 0.5
 
     best_chromosome = None
@@ -535,10 +536,10 @@ def run_test_ga(ssvd, envs, pop_size, max_iter, device, fitness_func, name="GA",
     envs.close()
 
 # GA but crossover happens between weights of same shapes
-def run_test_gam(ssvd, envs, pop_size, max_iter, device, fitness_func, name="GA-M", elitism=0.1, maxstep=3000):
+def run_test_gam(ssvd, envs, pop_size, max_iter, device, fitness_func, override=False, name="GA-M", elitism=0.1, maxstep=3000):
     test_name = name + "-population"
     writer = get_logger(name)
-    gi, p = load_or_create_pop(pop_size, name=test_name)
+    gi, p = load_or_create_pop(pop_size, override=override, name=test_name)
     mutation_rate = 0.5
 
     best_chromosome = None

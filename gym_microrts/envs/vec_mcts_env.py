@@ -51,6 +51,7 @@ class MicroRTSMCTSEnv:
         num_bot_envs,
         partial_obs=False,
         max_steps=2000,
+        mcts_time=300,
         render_theme=2,
         frame_skip=0,
         ai2s=[],
@@ -71,6 +72,7 @@ class MicroRTSMCTSEnv:
         self.frame_skip = frame_skip
         self.ai2s = ai2s
         self.map_paths = map_paths
+        self.mcts_search_time = mcts_time
         if len(map_paths) == 1:
             self.map_paths = [map_paths[0] for _ in range(self.num_envs)]
         else:
@@ -204,6 +206,7 @@ class MicroRTSMCTSEnv:
             JArray(AI)([ai2(self.real_utt) for ai2 in self.ai2s]),
             self.real_utt,
             self.partial_obs,
+            self.mcts_search_time
         )
         self.render_client = (
             self.vec_client.selfPlayClients[0] if len(self.vec_client.selfPlayClients) > 0 else self.vec_client.clients[0]

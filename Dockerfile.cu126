@@ -46,6 +46,7 @@ RUN pip3 install -r requirements.txt
 
 COPY ./gym_microrts ./gym_microrts
 COPY ./experiments ./experiments
+COPY run.py run.py
 
 COPY ./entrypoint.sh /usr/local/bin/entrypoint.sh
 # Ensure it's executable
@@ -54,4 +55,4 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 # RUN cat poetry_installed.txt
 
 # Set the entrypoint
-#ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
