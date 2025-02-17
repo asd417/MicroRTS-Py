@@ -10,7 +10,7 @@ from experiments.ssvd_trainer import fitness, fitness_mcts, SSVDVariable, run_te
 from gym_microrts import microrts_ai
 from gym_microrts.envs.vec_env_custom import MicroRTSGridModeVecEnv
 from gym_microrts.envs.vec_mcts_env import MicroRTSMCTSEnv
-from distutils.util import strtobool
+from setuptools._distutils.util import strtobool
 
 def parse_args():
     parser = argparse.ArgumentParser(

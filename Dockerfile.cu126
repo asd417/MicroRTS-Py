@@ -37,7 +37,7 @@ RUN apt-get -y -q install wget unzip default-jdk
 # copy local files
 RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
 RUN apt update && apt install tree -y
-#WORKDIR /app
+WORKDIR /app
 
 COPY requirements.txt requirements.txt
 RUN pip3 install -r requirements.txt
@@ -46,6 +46,7 @@ RUN pip3 install -r requirements.txt
 
 COPY ./gym_microrts ./gym_microrts
 COPY ./experiments ./experiments
+COPY build.sh build.sh
 COPY run.py run.py
 
 COPY ./entrypoint.sh /usr/local/bin/entrypoint.sh

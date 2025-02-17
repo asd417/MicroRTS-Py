@@ -48,6 +48,20 @@ python ppo_gridnet.py \
     --seed 1
 ```
 
+To train an agent inside a docker container, run the following
+
+```bash
+git submodule update --init --recursive
+docker build -f Dockerfile.cu<your cuda version> -t microrts-image .
+docker run microrts-image python3 run.py -h
+```
+
+To view inside the container
+
+```bash
+docker run --rm -it microrts-image /bin/sh
+```
+
 [![asciicast](https://asciinema.org/a/586754.svg)](https://asciinema.org/a/586754)
 
 For running a partial observable example, tune the `partial_obs` argument.
