@@ -406,7 +406,7 @@ def load_or_create_pop(size, override=False, name="population", device='cpu'):
 
     if (not logfile is None) and not override:
         with open(name+"_log.txt", 'r') as file:
-            print(f"Found existing log {name+"_log.txt"}")
+            print(f"Found existing log {name+'_log.txt'}")
             lines = file.readlines()
             last_line = lines[-1].strip().split()
             if last_line[0] == "Generation":
