@@ -40,9 +40,9 @@ def parse_args():
         help='the maximum number of steps per game environment')
 
     # Genetic Algorithm settings
-    parser.add_argument('--population', type=int, default=0,
+    parser.add_argument('--population', type=int, default=50,
         help='the size of population')
-    parser.add_argument('--max-gen', type=int, default=0,
+    parser.add_argument('--max-gen', type=int, default=1000,
         help='maximum generation')
     parser.add_argument('--elitism', type=float, default=0.1,
         help='elitism used by GA and GAM')
