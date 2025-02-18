@@ -190,18 +190,31 @@ class MicroRTSGridModeVecEnv:
         from ai.core import AI
         #from ts import JNIGridnetVecClient as Client
         from ai.AALL import JNIGridnetVecClient as Client
-
-        self.vec_client = Client(
-            self.num_selfplay_envs,
-            self.num_bot_envs,
-            self.max_steps,
-            self.rfs,
-            os.path.expanduser(self.microrts_path),
-            self.map_paths,
-            JArray(AI)([ai2(self.real_utt) for ai2 in self.ai2s]),
-            self.real_utt,
-            self.partial_obs,
-        )
+        if True: #using simple expert system
+            self.vec_client = Client(
+                self.num_selfplay_envs,
+                self.num_bot_envs,
+                self.max_steps,
+                self.rfs,
+                os.path.expanduser(self.microrts_path),
+                self.map_paths,
+                JArray(AI)([ai2(self.real_utt) for ai2 in self.ai2s]),
+                self.real_utt,
+                self.partial_obs,
+                True
+            )
+        else:
+            self.vec_client = Client(
+                    self.num_selfplay_envs,
+                    self.num_bot_envs,
+                    self.max_steps,
+                    self.rfs,
+                    os.path.expanduser(self.microrts_path),
+                    self.map_paths,
+                    JArray(AI)([ai2(self.real_utt) for ai2 in self.ai2s]),
+                    self.real_utt,
+                    self.partial_obs,
+                )
         self.render_client = (
             self.vec_client.selfPlayClients[0] if len(self.vec_client.selfPlayClients) > 0 else self.vec_client.clients[0]
         )

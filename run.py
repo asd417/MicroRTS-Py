@@ -28,8 +28,7 @@ def parse_args():
         help='whether to display environment')
     parser.add_argument('--exp-name', type=str, default="",
         help='the name of this experiment')
-    parser.add_argument('--override-exp', type=str, default="",
-        help='set to override existing exp log and population')
+    parser.add_argument('--override-exp', help='set to override existing exp log and population',type=lambda x: bool(strtobool(x)), default=False, nargs='?', const=True)
     parser.add_argument('--pre-s-weights', type=int, default=1,
         help='the number of weight matrices before sigma multiplication')
     parser.add_argument('--post-s-weights', type=int, default=1,
@@ -75,7 +74,8 @@ if __name__ == "__main__":
         fitness_f = fitness
         input_h = envs.height
         input_w = envs.width
-        actionSpace = envs.height * envs.width + 6 # board + unit type count
+        #actionSpace = envs.height * envs.width + 6 # board + unit type count
+        actionSpace = 13
     else:
         envs = MicroRTSMCTSEnv(
             num_selfplay_envs=0,

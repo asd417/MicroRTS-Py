@@ -617,7 +617,7 @@ def run_test_gam(ssvd, envs, pop_size, max_iter, device, fitness_func, render=Fa
 RECORD = False
 RENDER = True
 USE_MCTS = True
-if __name__ == "__main__":
+if __name__ == "__main__1":
     #test_conv()
     env_num = 5
     pop = 40
@@ -670,7 +670,7 @@ if __name__ == "__main__":
     #run_test_es(ssvd, envs, pop, max_gen, device, fitness_f, name=f"OpenAIES_{env_num}_{pop}_{int(elitism * 100)}%", maxstep=maxstep)
     run_test_gam(ssvd, envs, pop, max_gen, device, fitness_f, name=f"GAM_{env_num}_{pop}_{int(elitism * 100)}%", maxstep=maxstep)
 
-if __name__ == "__main__1":
+if __name__ == "__main__":
     # writer = get_logger("test")
     # writer.add_scalar("Loss/train", 0.1, 1)  # ✅ Logs loss over time
     # writer.add_scalar("Loss/train", 0.4, 2)
@@ -703,7 +703,7 @@ if __name__ == "__main__1":
     # result = evaluateSSVD(w1, w2, w3, t1)
     # print(result.shape)
     
-    ssvd = SSVDVariable(16, 16, 16*16+6, [1,1])
+    ssvd = SSVDVariable(16, 16, 10, [2,2])
     print(ssvd.get_chromosome_size())
     print(U.shape)
     print(w1.shape)
