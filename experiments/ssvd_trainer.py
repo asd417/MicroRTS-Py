@@ -123,10 +123,10 @@ class SSVDModel(nn.Module):
         if S.shape[0] < S_height: # use top-k only
             Sigma = torch.diag(S)
             U = U[:, :self.k]
-            print(Vh.shape)
+            #print(Vh.shape)
             Vh = Vh[:self.k, :]
-            print(Vh.shape)
-            print("------------")
+            #print(Vh.shape)
+            #print("------------")
         else:
             Sigma = torch.zeros(input.shape, device=input.device) # use full
             Sigma[:, :S.size(0)] = torch.diag(S)

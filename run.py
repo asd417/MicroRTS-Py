@@ -123,7 +123,7 @@ if __name__ == "__main__":
         print("Please specify the optimizer to use with --optimizer")
     else:
         test_suffix = "*" if args.exp_continue else timestamp
-        testname = f"{args.optimizer}_{env_num}_{pop}_{int(elitism * 100)}%_{test_suffix}" if args.exp_name == "" else args.exp_name
+        testname = f"./runs/{args.optimizer}_{env_num}_{pop}_{int(elitism * 100)}%_{test_suffix}" if args.exp_name == "" else args.exp_name
         found_log, filename_log = find_file(testname+".txt")
         found_pt, filename_pt = find_file(testname+".pt")
         if not found_log or not found_pt:
