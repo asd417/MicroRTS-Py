@@ -10,4 +10,5 @@ tqdm==4.67.1
 trueskill==0.4.5
 wandb==0.12.21
 stable-baselines3[extra]>=2.5.0
+pyade-python>=1.1.0
 # install torch separately
