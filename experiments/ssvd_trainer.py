@@ -32,23 +32,23 @@ class SSVDVariable:
         self.outputSize = outputSize
         self.pre_s_tensors = structure[0]
         self.post_s_tensors = structure[1]
+        if k != "full":
+            self.k = k
+        else:
+            self.k = max(input_w, input_h)
 
     def get_chromosome_size(self):
-        return self.pre_s_tensors * self.inputSizeH**2 + self.post_s_tensors * self.inputSizeW**2 + self.outputSize * self.inputSizeW * self.inputSizeH
+        return self.pre_s_tensors * self.inputSizeH * min(self.inputSizeH, self.k) + self.post_s_tensors * self.inputSizeW * min(self.inputSizeW, self.k) + self.outputSize * self.inputSizeW * self.inputSizeH
 
     def chromosome_to_weights(self, chromosome : torch.Tensor):
         expected_size = self.get_chromosome_size()
         if chromosome.shape[0] != expected_size:
             raise ValueError(f"Vector size must be {expected_size}, but got {chromosome.shape[0]}.")
-        weights_1 = chromosome[
-            : self.pre_s_tensors * self.inputSizeH**2
-            ].view(self.pre_s_tensors, self.inputSizeH, self.inputSizeH)      # First matrix (n x n)
-        weights_2 = chromosome[
-            self.pre_s_tensors * self.inputSizeH**2 : 
-            self.pre_s_tensors * self.inputSizeH**2 + self.post_s_tensors * self.inputSizeW**2
-            ].view(self.post_s_tensors,  self.inputSizeW, self.inputSizeW)   # Second matrix (m x n^2)
-        weightO = chromosome[self.pre_s_tensors * self.inputSizeH**2 + self.post_s_tensors * self.inputSizeW**2 : 
-                             ].view(self.outputSize, self.inputSizeW * self.inputSizeH)
+        slice1 = self.pre_s_tensors * self.inputSizeH * min(self.inputSizeH, self.k)
+        slice2 = self.post_s_tensors * self.inputSizeW * min(self.inputSizeW, self.k)
+        weights_1 = chromosome[ : slice1].view(self.pre_s_tensors, self.inputSizeH, self.inputSizeH)      # First matrix (n x n)
+        weights_2 = chromosome[slice1 : slice1 + slice2].view(self.post_s_tensors,  self.inputSizeW, self.inputSizeW)   # Second matrix (m x n^2)
+        weightO = chromosome[slice1 + slice2 : ].view(self.outputSize, self.inputSizeW * self.inputSizeH)
         return weights_1, weights_2, weightO
 
 class SSVDModel(nn.Module):
@@ -60,8 +60,10 @@ class SSVDModel(nn.Module):
         # Define convolution layers
         self.conv1 = nn.Conv3d(1, 1, (1, 1, 4), stride=(1, 1, 2), padding=(0, 0, 2), device=device)
         self.conv2 = nn.Conv3d(1, 1, (1, 1, 2), stride=(1, 1, 1), padding=(0, 0, 0), device=device)
+        self.k = -1
 
-    def forward(self, obs, weights1, weights2, weightsO):
+    def forward(self, obs, weights1, weights2, weightsO, k):
+        self.k = k
         inputTensorMulti = torch.from_numpy(obs).float()
         batch_size = self.envs.num_envs
         device = inputTensorMulti.device
@@ -83,7 +85,6 @@ class SSVDModel(nn.Module):
             #print(f)
             p += size
         
-        
         # Step 2: Stack extracted features into a 5D tensor (batch, channels=1, depth=1, height=H, width=W)
         inputTensor = torch.cat(feature_tensors, dim=3) # Shape: (batch, H, W, D_n)
         s1 = inputTensor.shape
@@ -103,13 +104,40 @@ class SSVDModel(nn.Module):
         actions = []
         for i in range(batch_size):
             s4 = it[i][1:].shape # next line squeezes it
-            outputTensor = evaluateSSVD(weights1, weights2, weightsO, it[i].squeeze(0))  # Process each separately
+            outputTensor = self.evaluateSSVD(weights1, weights2, weightsO, it[i].squeeze(0))  # Process each separately
             #outputTensor[outputTensor < 0] = 0.00001
             actions.append(outputTensor.unsqueeze(0))  # Keep batch dimension
         out = torch.cat(actions, dim=0)
         #print(f"from {s1} to {s2} to {s3} to {s4} to {out.shape}")
         # Step 6: Concatenate the actions into a final output tensor
         return out # Shape: (batch, output_size)
+        
+    def evaluateSSVD(self, weights1, weights2, weightsO, input : torch.Tensor) -> torch.Tensor:
+        input = input.float() # ensure that the input is floating point tensor
+        U, S, Vh = torch.linalg.svd(input)
+        U = U[:, :self.k]
+        S_height = S.shape[0]
+        S = S[:self.k]
+        Vh = Vh[self.k:]
+        if S.shape[0] < S_height: # use top-k only
+            Sigma = torch.diag(S)
+        else:
+            Sigma = torch.zeros(input.shape, device=input.device) # use full
+            Sigma[:, :S.size(0)] = torch.diag(S)
+        # Apply QR decomposition to stabilize U and Vh
+        U_stable, _ = torch.linalg.qr(U)  # QR decomposition of U
+        Vh_stable, _ = torch.linalg.qr(Vh.T)  # QR decomposition of Vh.T, then transpose back
+
+        result = torch.nn.functional.relu(U_stable @ weights1[0])
+        for i in range(1, weights1.shape[0]):
+            result = torch.nn.functional.relu(result @ weights1[i])  # ReLU after each step
+        result = torch.nn.functional.relu(result @ Sigma)
+        for i in range(1, weights2.shape[0]):
+            result = torch.nn.functional.relu(result @ weights2[i])  # ReLU after each step
+        result = weightsO @ (result @ Vh_stable).flatten()
+
+        #outputTensor = weightsO @ (U_stable @ weights1 @ Sigma @ Vh_stable).flatten()
+        return result
     
 def create_population(shape, size, device):
     return torch.stack([torch.randn(shape, device=device) for _ in range(size)])
@@ -244,32 +272,6 @@ def matrix_to_vector_custom(matrix: torch.Tensor, m : int, seed : int):
     return transformed_vector
 
 
-def evaluateSSVD(weights1,weights2,weightsO,input : torch.Tensor) -> torch.Tensor:
-    input = input.float() # ensure that the input is floating point tensor
-    U, S, Vh = torch.linalg.svd(input)
-    Sigma = torch.zeros(input.shape, device=input.device)
-    Sigma[:, :S.size(0)] = torch.diag(S)
-    # Apply QR decomposition to stabilize U and Vh
-    U_stable, _ = torch.linalg.qr(U)  # QR decomposition of U
-    Vh_stable, _ = torch.linalg.qr(Vh.T)  # QR decomposition of Vh.T, then transpose back
-    #print("-------")
-    #print(f"{input.shape} at {input.device}")
-    #print(f"{U_stable.shape} at {U_stable.device}")
-    #print(f"{weights1.shape} at {weights1.device}")
-    #print(f"{Sigma.shape} at {Sigma.device}")
-    #print(f"{Vh_stable.shape} at {Vh_stable.device}")
-    #print(f"{weightsO.shape} at {weightsO.device}")
-
-    result = torch.nn.functional.relu(U_stable @ weights1[0])
-    for i in range(1, weights1.shape[0]):
-        result = torch.nn.functional.relu(result @ weights1[i])  # ReLU after each step
-    result = torch.nn.functional.relu(result @ Sigma)
-    for i in range(1, weights2.shape[0]):
-        result = torch.nn.functional.relu(result @ weights2[i])  # ReLU after each step
-    result = weightsO @ (result @ Vh_stable).flatten()
-
-    #outputTensor = weightsO @ (U_stable @ weights1 @ Sigma @ Vh_stable).flatten()
-    return result
 
 def softmax(x, axis=None):
     x = x - x.max(axis=axis, keepdims=True)
