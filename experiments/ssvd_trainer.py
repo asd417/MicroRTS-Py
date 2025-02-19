@@ -1,5 +1,6 @@
 # Dependencies required are
 import os
+import glob
 import math
 import tqdm
 import torch # with cuda
@@ -38,21 +39,24 @@ class SSVDVariable:
             self.k = max(input_w, input_h)
 
     def get_chromosome_size(self):
-        return self.pre_s_tensors * self.inputSizeH * min(self.inputSizeH, self.k) + self.post_s_tensors * self.inputSizeW * min(self.inputSizeW, self.k) + self.outputSize * self.inputSizeW * self.inputSizeH
+        return self.pre_s_tensors * min(self.inputSizeH, self.k) * min(self.inputSizeH, self.k) + self.post_s_tensors * min(self.inputSizeW, self.k) * min(self.inputSizeW, self.k) + self.outputSize * self.inputSizeW * self.inputSizeH
 
     def chromosome_to_weights(self, chromosome : torch.Tensor):
         expected_size = self.get_chromosome_size()
         if chromosome.shape[0] != expected_size:
             raise ValueError(f"Vector size must be {expected_size}, but got {chromosome.shape[0]}.")
-        slice1 = self.pre_s_tensors * self.inputSizeH * min(self.inputSizeH, self.k)
-        slice2 = self.post_s_tensors * self.inputSizeW * min(self.inputSizeW, self.k)
-        weights_1 = chromosome[ : slice1].view(self.pre_s_tensors, self.inputSizeH, self.inputSizeH)      # First matrix (n x n)
-        weights_2 = chromosome[slice1 : slice1 + slice2].view(self.post_s_tensors,  self.inputSizeW, self.inputSizeW)   # Second matrix (m x n^2)
+        slice1 = self.pre_s_tensors * min(self.inputSizeH, self.k)**2
+
+        slice2 = self.post_s_tensors * min(self.inputSizeW, self.k)**2
+
+        weights_1 = chromosome[ : slice1].view(self.pre_s_tensors, min(self.inputSizeH, self.k), min(self.inputSizeH, self.k))      # First matrix (n x n)
+        
+        weights_2 = chromosome[slice1 : slice1 + slice2].view(self.post_s_tensors,  min(self.inputSizeW, self.k), min(self.inputSizeW, self.k))   # Second matrix (m x n^2)
         weightO = chromosome[slice1 + slice2 : ].view(self.outputSize, self.inputSizeW * self.inputSizeH)
         return weights_1, weights_2, weightO
 
 class SSVDModel(nn.Module):
-    def __init__(self, envs, device="cpu"):
+    def __init__(self, envs, k, device="cpu"):
         super(SSVDModel, self).__init__()
         self.envs = envs
         self.feature_sizes = [5, 5, 3, 8, 6, 2]
@@ -60,10 +64,9 @@ class SSVDModel(nn.Module):
         # Define convolution layers
         self.conv1 = nn.Conv3d(1, 1, (1, 1, 4), stride=(1, 1, 2), padding=(0, 0, 2), device=device)
         self.conv2 = nn.Conv3d(1, 1, (1, 1, 2), stride=(1, 1, 1), padding=(0, 0, 0), device=device)
-        self.k = -1
-
-    def forward(self, obs, weights1, weights2, weightsO, k):
         self.k = k
+
+    def forward(self, obs, weights1, weights2, weightsO):
         inputTensorMulti = torch.from_numpy(obs).float()
         batch_size = self.envs.num_envs
         device = inputTensorMulti.device
@@ -115,31 +118,44 @@ class SSVDModel(nn.Module):
     def evaluateSSVD(self, weights1, weights2, weightsO, input : torch.Tensor) -> torch.Tensor:
         input = input.float() # ensure that the input is floating point tensor
         U, S, Vh = torch.linalg.svd(input)
-        U = U[:, :self.k]
         S_height = S.shape[0]
         S = S[:self.k]
-        Vh = Vh[self.k:]
         if S.shape[0] < S_height: # use top-k only
             Sigma = torch.diag(S)
+            U = U[:, :self.k]
+            print(Vh.shape)
+            Vh = Vh[:self.k, :]
+            print(Vh.shape)
+            print("------------")
         else:
             Sigma = torch.zeros(input.shape, device=input.device) # use full
             Sigma[:, :S.size(0)] = torch.diag(S)
         # Apply QR decomposition to stabilize U and Vh
         U_stable, _ = torch.linalg.qr(U)  # QR decomposition of U
         Vh_stable, _ = torch.linalg.qr(Vh.T)  # QR decomposition of Vh.T, then transpose back
-
+        Vh_stable = Vh_stable.T
+        
         result = torch.nn.functional.relu(U_stable @ weights1[0])
         for i in range(1, weights1.shape[0]):
             result = torch.nn.functional.relu(result @ weights1[i])  # ReLU after each step
         result = torch.nn.functional.relu(result @ Sigma)
         for i in range(1, weights2.shape[0]):
             result = torch.nn.functional.relu(result @ weights2[i])  # ReLU after each step
+        #test = U_stable @ Sigma @ Vh_stable
+        #print(input)
+        #print(test)
+        #print(U_stable.shape)
+        #print(Sigma.shape)
+        #print(result.shape)
+        #print(Vh_stable.shape)
+        #print((result @ Vh_stable).flatten().shape)
+        #print(weightsO.shape)
         result = weightsO @ (result @ Vh_stable).flatten()
 
-        #outputTensor = weightsO @ (U_stable @ weights1 @ Sigma @ Vh_stable).flatten()
         return result
     
-def create_population(shape, size, device):
+def create_population(chromosome_len, size, device):
+    shape = (chromosome_len, 1)
     return torch.stack([torch.randn(shape, device=device) for _ in range(size)])
 
 def roulette_wheel_selection(population, device="cpu"):
@@ -271,14 +287,10 @@ def matrix_to_vector_custom(matrix: torch.Tensor, m : int, seed : int):
     transformed_vector = W @ vector
     return transformed_vector
 
-
-
 def softmax(x, axis=None):
     x = x - x.max(axis=axis, keepdims=True)
     y = np.exp(x)
     return y / y.sum(axis=axis, keepdims=True)
-
-
 
 #TODO let this spawn multiple environments at the same time. The microrts client already supports it.
 #need to revert some of the work I did on the java side because I might have broken it.
@@ -297,7 +309,7 @@ def fitness(envs, chromosome, ssvd, maxstep = 3000, render=False, record=False):
                 envs.render()
         if not render and record:
             envs.render(mode="rgb_array")
-        model = SSVDModel(envs, weights1.device)
+        model = SSVDModel(envs, ssvd.k, device=weights1.device) # full k
         action = model(obs, weights1, weights2, weightsO)
         obs, reward, done, info = envs.step(action.to("cpu").detach().numpy())
         # dones is an array of booleans. The element is true if the step ends the game. after that, new game is started immediately.
@@ -345,82 +357,32 @@ def fitness_mcts(envs, chromosome, ssvd, maxstep=3000, render=False, record=Fals
             break
     return sum(scores) / float(envs.num_envs)
 
-def load_files(pt_file, txt_file):
-    # Check if the .pt file exists
-    if os.path.exists(os.path.join(os.getcwd(), pt_file)):
-        tensor_data = torch.load(pt_file)
-    else:
-        tensor_data = None
-    
-    # Check if the .txt file exists
-    if os.path.exists(txt_file):
-        with open(os.path.join(os.getcwd(), txt_file), 'r') as file:
-            text_data = file.read()
-    else:
-        text_data = None
-    
-    return tensor_data, text_data
 
-def write_log(log_message, name="population"):
+def write_log(log_message, logdir):
     # Open the log file in append mode ('a'), so new logs are added to the end
-    print(f"Logging to {os.path.join(os.getcwd(), name+'_log.txt')}")
-    with open(os.path.join(os.getcwd(), name+'_log.txt'), 'a') as file:
+    with open(logdir, 'a') as file:
         file.write(log_message + '\n')
 
-    #print(f"Log written to {log_file}")
+def save_pop(p, ptdir):
+    torch.save(p, ptdir)
 
-# input is (1, 16, 16, 29)
-def dout(din,kernel_size, padding=0,dilation=1, stride=1):
-    return math.floor((din + 2*padding - dilation * (kernel_size - 1) - 1) / stride + 1)
-
-def test_conv():
-    # m = torch.nn.Conv3d(1, 1, 3, stride=2)
-    # non-square kernels and unequal stride and with padding
-    m = torch.nn.Conv3d(1, 1, (1, 1, 4), stride=(1, 1, 2), padding=(0, 0, 2))
-    input = torch.randn(1, 1, 16, 16, 29)
-    output : torch.Tensor = m(input)
-    print(input.shape)
-    print(output.shape)
-    output = m(output)
-    print(output.shape)
-    output = m(output)
-    print(output.shape)
-    output = m(output)
-    m = torch.nn.Conv3d(1, 1, (1, 1, 3), stride=(1, 1, 2), padding=(0, 0, 0))
-    print(output.shape)
-    output = m(output)
-    print(output.shape)
-
-    output = output.squeeze(-1)
-    print(output.shape)
-
-    #print(dout(29, 5, stride=3, padding=2))
-    return
-
-def save_pop(p, name="population"):
-    torch.save(p, name+'.pt')
-
-def load_or_create_pop(size, ssvd, override=False, name="population", device='cpu'):
-    if override:
-        p = None
-        logfile = None
-    else:
-        p, logfile = load_files(name+".pt", name+"_log.txt")
+def load_or_create_pop(size, ssvd, logdir, ptdir, device='cpu'):
+    #p, logfile = load_checkpoint(name+".pt", name+".txt")
     gi = 1
-    if p is None:
-        p = create_population((ssvd.get_chromosome_size(),1), size, device)
-        with open(os.path.join(os.getcwd(), name+"_log.txt"), 'w') as file:
-            file.write("Starting new training loop" + '\n')
-        print()
-
-    if (not logfile is None) and not override:
-        with open(os.path.join(os.getcwd(), name+"_log.txt", 'r')) as file:
-            print(f"Found existing log {name+'_log.txt'}")
+    try:
+        open(ptdir)
+        with open(logdir, 'r') as file:
+            print(f"Found existing log {logdir}")
             lines = file.readlines()
             last_line = lines[-1].strip().split()
             if last_line[0] == "Generation":
                 gi = int(last_line[1])
                 print(f"Continuing from Generation {gi}")
+        p = torch.load(ptdir)
+    except FileNotFoundError:    
+        p = create_population(ssvd.get_chromosome_size(), size, device)
+        with open(logdir, 'w') as file:
+            file.write("Starting new training loop" + '\n')
     return gi, p
 
 def get_logger(name, directory="runs/") -> SummaryWriter:
@@ -429,16 +391,16 @@ def get_logger(name, directory="runs/") -> SummaryWriter:
     return writer
 
 # openai es
-def run_test_es(ssvd, envs, pop_size, max_iter, device, fitness_func, render=False, record=False, override=False, name="OpenAI-ES", maxstep=3000):
-    test_name = name + "-population"
+def run_test_es(ssvd, envs, pop_size, max_iter, device, fitness_func, render=False, record=False, maxstep=3000, logdir="", ptdir=""):
+    name = os.path.basename(logdir).split(".")[0]
     sigma = 0.1    # noise standard deviation
     alpha = 0.001  # learning rate
-    gen_start, w = load_or_create_pop(1, ssvd, override=override, name=test_name, device=device)
+    gen_start, w = load_or_create_pop(1, ssvd, logdir, ptdir, device=device)
     writer = get_logger(name)
     
     for i in range(gen_start, max_iter):
         w = w.squeeze(0)
-        progress = tqdm.tqdm(total=pop_size, desc=f"{test_name} Generation {i}/{max_iter}")
+        progress = tqdm.tqdm(total=pop_size, desc=f"{name} Generation {i}/{max_iter}")
         N = torch.randn((pop_size, ssvd.get_chromosome_size(), 1), device=device)
         R = torch.zeros(pop_size)
         best_fitness_single_gen = 0
@@ -463,7 +425,7 @@ def run_test_es(ssvd, envs, pop_size, max_iter, device, fitness_func, render=Fal
         }, i)
         logstr = f"Generation {i} {name} Highest: {best_fitness_single_gen} Average: {avg} StDev: {std}"
         tqdm.tqdm.write(logstr)
-        write_log(logstr, name=test_name)
+        write_log(logstr, logdir)
         A = (R - torch.mean(R)) / torch.std(R)
         N = N.squeeze()
         w = w.squeeze(-1)
@@ -471,12 +433,12 @@ def run_test_es(ssvd, envs, pop_size, max_iter, device, fitness_func, render=Fal
         #print(f"w {w.shape}")
         w = w + alpha/(pop_size*sigma) * N.T @ A
         w = w.unsqueeze(0).unsqueeze(-1)
-        save_pop(w, name=test_name)
+        save_pop(w, ptdir)
 
-def run_test_ga(ssvd, envs, pop_size, max_iter, device, fitness_func, render=False, record=False, override=False, name="GA", elitism=0.1, maxstep=3000):
-    test_name = name + "-population"
+def run_test_ga(ssvd, envs, pop_size, max_iter, device, fitness_func, render=False, record=False, elitism=0.1, maxstep=3000, logdir="", ptdir=""):
+    name = os.path.basename(logdir).split(".")[0]
     writer = get_logger(name)
-    gi, p = load_or_create_pop(pop_size, ssvd, override=override, name=test_name)
+    gi, p = load_or_create_pop(pop_size, ssvd, logdir, ptdir)
     mutation_rate = 0.5
 
     best_chromosome = None
@@ -488,7 +450,7 @@ def run_test_ga(ssvd, envs, pop_size, max_iter, device, fitness_func, render=Fal
             break
         ev_f = []
         best_fitness_single_gen = 0
-        progress = tqdm.tqdm(total=len(p), desc=f"{test_name} Generation {gi}/{max_iter}")
+        progress = tqdm.tqdm(total=len(p), desc=f"{name} Generation {gi}/{max_iter}")
         for chromosome in p:
             f = fitness_func(envs, chromosome, ssvd, maxstep=maxstep, render=render) 
             tqdm.tqdm.write(f"Fitness: {f}")
@@ -514,7 +476,7 @@ def run_test_ga(ssvd, envs, pop_size, max_iter, device, fitness_func, render=Fal
         }, gi)
         logstr = f"Generation {gi} {name} Highest: {best_fitness_single_gen} Average: {avg} StDev: {std}"
         tqdm.tqdm.write(logstr)
-        write_log(logstr, name=test_name)
+        write_log(logstr, logdir)
         if(not win):
             ev_p = list(zip(p,ev_f))
             ev_p_sorted = sorted(ev_p, key=lambda x: x[1], reverse=True) # sort by fitness from highest to lowest
@@ -536,19 +498,19 @@ def run_test_ga(ssvd, envs, pop_size, max_iter, device, fitness_func, render=Fal
         else:
             logstr = f"Training Done | Best Fitness: {best_fitness}"
             tqdm.tqdm.write(logstr)
-            write_log(logstr, name=test_name)
+            write_log(logstr, logdir)
             logstr = f"Chromosome: {chromosome}"
             tqdm.tqdm.write(logstr)
-            write_log(logstr, name=test_name)
-            save_pop(best_chromosome, name=test_name+"_best")
-        save_pop(p, name=test_name)
+            write_log(logstr, logdir)
+            save_pop(best_chromosome, name=name+"_best")
+        save_pop(p, ptdir)
     envs.close()
 
 # GA but crossover happens between weights of same shapes
-def run_test_gam(ssvd, envs, pop_size, max_iter, device, fitness_func, render=False, record=False, override=False, name="GA-M", elitism=0.1, maxstep=3000):
-    test_name = name + "-population"
+def run_test_gam(ssvd, envs, pop_size, max_iter, device, fitness_func, render=False, record=False, elitism=0.1, maxstep=3000, logdir="", ptdir=""):
+    name = os.path.basename(logdir).split(".")[0]
     writer = get_logger(name)
-    gi, p = load_or_create_pop(pop_size, ssvd, override=override, name=test_name)
+    gi, p = load_or_create_pop(pop_size, ssvd, logdir, ptdir)
     mutation_rate = 0.5
 
     best_chromosome = None
@@ -560,7 +522,7 @@ def run_test_gam(ssvd, envs, pop_size, max_iter, device, fitness_func, render=Fa
             break
         ev_f = []
         best_fitness_single_gen = 0
-        progress = tqdm.tqdm(total=len(p), desc=f"{test_name} Generation {gi}/{max_iter}")
+        progress = tqdm.tqdm(total=len(p), desc=f"{name} Generation {gi}/{max_iter}")
         for chromosome in p:
             f = fitness_func(envs, chromosome, ssvd, maxstep=maxstep, render=render) 
             tqdm.tqdm.write(f"Fitness: {f}")
@@ -586,7 +548,7 @@ def run_test_gam(ssvd, envs, pop_size, max_iter, device, fitness_func, render=Fa
         }, gi)
         logstr = f"Generation {gi} {name} Highest: {best_fitness_single_gen} Average: {avg} StDev: {std}"
         tqdm.tqdm.write(logstr)
-        write_log(logstr, name=test_name)
+        write_log(logstr, logdir)
         if(not win):
             ev_p = list(zip(p,ev_f))
             ev_p_sorted = sorted(ev_p, key=lambda x: x[1], reverse=True) # sort by fitness from highest to lowest
@@ -608,110 +570,10 @@ def run_test_gam(ssvd, envs, pop_size, max_iter, device, fitness_func, render=Fa
         else:
             logstr = f"Training Done | Best Fitness: {best_fitness}"
             tqdm.tqdm.write(logstr)
-            write_log(logstr, name=test_name)
+            write_log(logstr, logdir)
             logstr = f"Chromosome: {chromosome}"
             tqdm.tqdm.write(logstr)
-            write_log(logstr, name=test_name)
-            save_pop(best_chromosome, name=test_name+"_best")
-        save_pop(p, name=test_name)
+            write_log(logstr, logdir)
+            save_pop(best_chromosome, name=name+"_best")
+        save_pop(p, ptdir)
     envs.close()
-
-RECORD = False
-RENDER = True
-USE_MCTS = True
-if __name__ == "__main__1":
-    #test_conv()
-    env_num = 5
-    pop = 40
-    max_gen = 300
-    elitism = 0.1
-    maxstep = 3000
-    
-    if not USE_MCTS:
-        envs = MicroRTSGridModeVecEnv(
-            num_selfplay_envs=0,
-            num_bot_envs=env_num,
-            max_steps=maxstep,
-            render_theme=2,
-            ai2s=[microrts_ai.coacAI for _ in range(env_num)],
-            map_paths=["maps/16x16/basesWorkers16x16.xml"],
-            reward_weight=np.array([10.0, 1.0, 1.0, 0.2, 1.0, 4.0]),
-        )
-        fitness_f = fitness
-        input_h = envs.height
-        input_w = envs.width
-        actionSpace = envs.height * envs.width + 6 # board + unit type count
-    else:
-        envs = MicroRTSMCTSEnv(
-            num_selfplay_envs=0,
-            num_bot_envs=env_num,
-            max_steps=maxstep,
-            render_theme=2,
-            ai2s=[microrts_ai.coacAI for _ in range(env_num)],
-            map_paths=["maps/16x16/basesWorkers16x16.xml"],
-            reward_weight=np.array([10.0, 1.0, 1.0, 0.2, 1.0, 4.0]),
-        )
-        fitness_f = fitness_mcts
-        input_h = envs.height
-        input_w = envs.width
-        actionSpace = 1
-    if RECORD:
-        envs = VecVideoRecorder(envs, "videos", record_video_trigger=lambda x: x % 4000 == 0, video_length=2000)
-
-    #device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    device = 'cpu'
-    
-    
-    print(f"Observation Space Height: {input_h}")
-    print(f"Observation Space Width: {input_w}")
-    print(f"Action Space size: {actionSpace}")
-
-    ssvd = SSVDVariable(input_h, input_w, actionSpace, [2,2])
-    #run_test_ga(ssvd, envs, 100, 300, device, name="GA_100_10%", elitism=0.1)
-    #run_test_ga(ssvd, envs, pop, max_gen, device, fitness_f, name=f"GA_{env_num}_{pop}_{int(elitism * 100)}%", elitism=0.1, maxstep=maxstep)
-    #run_test_es(ssvd, envs, pop, max_gen, device, fitness_f, name=f"OpenAIES_{env_num}_{pop}_{int(elitism * 100)}%", maxstep=maxstep)
-    run_test_gam(ssvd, envs, pop, max_gen, device, fitness_f, name=f"GAM_{env_num}_{pop}_{int(elitism * 100)}%", maxstep=maxstep)
-
-if __name__ == "__main__":
-    # writer = get_logger("test")
-    # writer.add_scalar("Loss/train", 0.1, 1)  # ✅ Logs loss over time
-    # writer.add_scalar("Loss/train", 0.4, 2)
-    # writer.add_scalar("Loss/train", 0.5, 3)
-    # sample_input = torch.randn(1, 3, 32, 32)  
-    # writer.add_histogram("histor", sample_input, 1)
-    # sample_input = torch.randn(1, 3, 32, 32)
-    # writer.add_histogram("histor", sample_input, 2)
-    # sample_input = torch.randn(1, 3, 32, 32)
-    # writer.add_histogram("histor", sample_input, 3)
-    # writer.close()
-    input_w = 10
-    input_h = 12
-    output = 8
-    layers = [3,2]
-    ssvd = SSVDVariable(input_w, input_h, output, layers)
-    t = torch.randn(ssvd.get_chromosome_size())
-    w1, w2, w3 = ssvd.chromosome_to_weights(t)
-    t1 = torch.randn((input_w,input_h))
-    U, S, Vh = torch.linalg.svd(t1)
-    Sigma = torch.zeros(t1.shape)
-    Sigma[:, :S.size(0)] = torch.diag(S)
-    # print(ssvd.get_chromosome_size())
-    # print(U.shape)
-    # print(w1.shape)
-    # print(Sigma.shape)
-    # print(w2.shape)
-    # print(Vh.shape)
-    # print(w3.shape)
-    # result = evaluateSSVD(w1, w2, w3, t1)
-    # print(result.shape)
-    
-    ssvd = SSVDVariable(16, 16, 10, [2,2])
-    print(ssvd.get_chromosome_size())
-    print(U.shape)
-    print(w1.shape)
-    print(Sigma.shape)
-    print(w2.shape)
-    print(Vh.shape)
-    print(w3.shape)
-    result = evaluateSSVD(w1, w2, w3, t1)
-    print(result.shape)
