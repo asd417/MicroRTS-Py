@@ -48,6 +48,7 @@ def apply_fitness(gennum, envs, ssvd, population, func, maxstep, render, maxfit=
     best_fitness_single_gen = 0
     best_chromosome = None
     ev_f = []
+    win = False
     for chromosome in population:
         f = func(envs, chromosome, ssvd, maxstep=maxstep, render=render) 
         tqdm.tqdm.write(f"Fitness: {f}")
@@ -118,7 +119,7 @@ def current_to_best_2_binary_mutation(population: torch.Tensor,
 
 def current_to_pbest_mutation(population: torch.Tensor,
                               population_fitness: torch.Tensor,
-                              f: List[float],
+                              f: list[float],
                               p: Union[float, torch.Tensor, int],
                               bounds: torch.Tensor) -> torch.Tensor:
     """
@@ -148,8 +149,8 @@ def current_to_pbest_mutation(population: torch.Tensor,
 
 def current_to_rand_1_mutation(population: torch.Tensor,
                                population_fitness: torch.Tensor,
-                               k: List[float],
-                               f: List[float],
+                               k: list[float],
+                               f: list[float],
                                bounds: torch.Tensor) -> torch.Tensor:
     """
     "Current to rand/1" mutation in differential evolution.
