@@ -60,7 +60,9 @@ if __name__ == "__main__":
     max_gen = args.max_gen
     elitism = args.elitism
     maxstep = args.max_steps
-    
+    # Win/Loss ResourceGather ProduceWorker ProduceBuilding AttackReward ProduceCombatUnit
+    reward_weight_original = [10.0, 1.0, 1.0, 0.2, 1.0, 4.0]
+    reward_weight_new = [10.0, 1.0, 1.0, 1.0, 5.0, 4.0]
     if not args.mcts:
         envs = MicroRTSGridModeVecEnv(
             num_selfplay_envs=0,
@@ -69,7 +71,7 @@ if __name__ == "__main__":
             render_theme=2,
             ai2s=[microrts_ai.coacAI for _ in range(env_num)],
             map_paths=["maps/16x16/basesWorkers16x16.xml"],
-            reward_weight=np.array([10.0, 1.0, 1.0, 0.2, 1.0, 4.0]),
+            reward_weight=np.array(reward_weight_new),
         )
         fitness_f = fitness
         input_h = envs.height
@@ -84,7 +86,7 @@ if __name__ == "__main__":
             render_theme=2,
             ai2s=[microrts_ai.coacAI for _ in range(env_num)],
             map_paths=["maps/16x16/basesWorkers16x16.xml"],
-            reward_weight=np.array([10.0, 1.0, 1.0, 0.2, 1.0, 4.0]),
+            reward_weight=np.array(reward_weight_new),
         )
         fitness_f = fitness_mcts
         input_h = envs.height
